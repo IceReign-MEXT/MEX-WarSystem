@@ -1,0 +1,18 @@
+# Environment variables (contains sensitive API keys, tokens, etc.)
+.env
+
+# Python cache directories
+__pycache__/
+*.pyc
+*.pyd
+*.pyo
+
+# Database file (local SQLite database)
+sql_app.db
+
+# Virtual environment directory (if you create one inside the project)
+.venv/
+venv/
+
+# Logs
+*.log
