@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# System Configuration
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ADMIN_ID = os.getenv("ADMIN_ID")
 ETH_RPC = os.getenv("RPC_URL_ETH")
@@ -52,14 +51,11 @@ def telegram_handler():
                 
                 if "/status" in text:
                     bal = w3.from_wei(w3.eth.get_balance(MAKER_ADDR), 'ether')
-                    send_msg(cid, f"❄️ <b>SYSTEM STATUS</b>\n───\n💰 <b>Vault:</b> {float(bal):.4f} ETH\n💎 <b>Supply:</b> 30B IBS\n✅ <b>Oracle:</b> Active")
+                    send_msg(cid, f"❄️ <b>SYSTEM STATUS</b>\n───\n💰 <b>Vault:</b> {float(bal):.4f} ETH\n💎 <b>Supply:</b> 30B IBS")
                 elif "/address" in text:
-                    send_msg(cid, f"📋 <b>REGISTRY</b>\n───\n💎 <b>Token:</b> <code>{CONTRACT}</code>\n🏦 <b>Vault:</b> <code>{MAKER_ADDR}</code>")
+                    send_msg(cid, f"📋 <b>REGISTRY</b>\n───\n💎 <b>Token:</b> <code>{CONTRACT}</code>")
         except: time.sleep(5)
 
 if __name__ == "__main__":
-    print("❄️ ICE GODS MASTER ENGINE STARTING...")
-    if ADMIN_ID:
-        send_msg(ADMIN_ID, "🚀 <b>101 MACHINE: ENGINE RECONSTRUCTED</b>\nSystem is live and monitoring.")
     threading.Thread(target=revenue_monitor, daemon=True).start()
     telegram_handler()
