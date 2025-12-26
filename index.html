@@ -3,130 +3,102 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ICE GODS | Master Investor Terminal</title>
+    <title>ICE GODS | Global Data Bridge</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;700&family=JetBrains+Mono:wght@400;700&display=swap');
-        
-        body { 
-            background-color: #020617; 
-            color: #f8fafc; 
-            font-family: 'Space Grotesk', sans-serif;
-            background-image: radial-gradient(circle at 50% 50%, #0f172a 0%, #020617 100%);
-        }
-        
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+        body { background-color: #020617; color: #f8fafc; font-family: sans-serif; }
         .mono { font-family: 'JetBrains Mono', monospace; }
-        
-        .glow-border {
-            border: 1px solid rgba(34, 211, 238, 0.2);
-            box-shadow: 0 0 15px rgba(34, 211, 238, 0.05);
-        }
-        
-        .ice-gradient {
-            background: linear-gradient(135deg, #22d3ee 0%, #0ea5e9 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .card-glass {
-            background: rgba(15, 23, 42, 0.6);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        @keyframes pulse-slow {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        .live-dot { animation: pulse-slow 2s infinite; }
+        .glow-cyan { box-shadow: 0 0 20px rgba(34, 211, 238, 0.2); border: 1px solid rgba(34, 211, 238, 0.3); }
+        .data-stream { height: 200px; overflow-y: hidden; }
+        @keyframes slide { from { transform: translateY(0); } to { transform: translateY(-100%); } }
     </style>
 </head>
-<body class="min-h-screen">
-    <!-- Navbar -->
-    <nav class="border-b border-white/5 py-4 px-6 flex justify-between items-center bg-black/20 backdrop-blur-md sticky top-0 z-50">
-        <div class="flex items-center gap-3">
-            <i class="fas fa-snowflake text-cyan-400 text-2xl"></i>
-            <span class="text-xl font-bold tracking-tighter uppercase">ICE GODS <span class="text-cyan-500">v1.01</span></span>
-        </div>
-        <div class="hidden md:flex gap-8 text-xs font-bold uppercase tracking-widest text-slate-400">
-            <a href="#" class="hover:text-cyan-400 transition-colors">Oracle</a>
-            <a href="#" class="hover:text-cyan-400 transition-colors">Revenue</a>
-            <a href="#" class="hover:text-cyan-400 transition-colors">Arsenal</a>
-        </div>
-        <button class="bg-cyan-500/10 border border-cyan-500/50 text-cyan-400 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-cyan-500 hover:text-black transition-all">
-            Connect Engine
-        </button>
-    </nav>
-
-    <main class="max-w-7xl mx-auto px-6 py-12">
-        <!-- Hero Header -->
-        <div class="mb-12">
-            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-[10px] font-bold uppercase tracking-widest mb-4">
-                <span class="w-2 h-2 rounded-full bg-cyan-400 live-dot"></span> System Live: Oracle Synchronized
+<body class="p-4 md:p-8">
+    <div class="max-w-6xl mx-auto">
+        <!-- HEADER -->
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+            <div>
+                <h1 class="text-4xl font-black text-white tracking-tighter">ICE GODS <span class="text-cyan-500 underline">WAR-SYSTEM</span></h1>
+                <p class="text-cyan-600 text-xs font-bold uppercase tracking-[0.3em] mt-1">Multi-Chain Revenue Monitor</p>
             </div>
-            <h1 class="text-6xl font-black mb-4 tracking-tighter">THE <span class="ice-gradient">WAR-SYSTEM</span></h1>
-            <p class="text-slate-400 max-w-2xl text-lg">Autonomous revenue capture and market intelligence for the Ice Gods Empire. Monitoring 30,000,000,000 $IBS supply across multi-chain liquidity pools.</p>
-        </div>
-
-        <!-- Grid Stats -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-            <div class="card-glass p-6 rounded-3xl glow-border">
-                <p class="text-slate-500 text-xs font-bold uppercase mb-2">Total Supply</p>
-                <h3 class="text-3xl font-bold">30.0B <span class="text-sm text-cyan-500">IBS</span></h3>
-            </div>
-            <div class="card-glass p-6 rounded-3xl glow-border">
-                <p class="text-slate-500 text-xs font-bold uppercase mb-2">Revenue Capture</p>
-                <h3 class="text-3xl font-bold">1.0% <span class="text-sm text-cyan-500">PER TRADE</span></h3>
-            </div>
-            <div class="card-glass p-6 rounded-3xl glow-border">
-                <p class="text-slate-500 text-xs font-bold uppercase mb-2">System Status</p>
-                <h3 class="text-3xl font-bold text-green-400">ACTIVE</h3>
-            </div>
-            <div class="card-glass p-6 rounded-3xl glow-border">
-                <p class="text-slate-500 text-xs font-bold uppercase mb-2">Global Nodes</p>
-                <h3 class="text-3xl font-bold">42 <span class="text-sm text-cyan-500">UPLINK</span></h3>
+            <div id="wallet-status" class="bg-cyan-500/10 border border-cyan-500/20 px-6 py-3 rounded-2xl flex items-center gap-3">
+                <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span class="mono text-[10px] text-cyan-400">VAULT: 0x7D7A...eda3</span>
             </div>
         </div>
 
-        <!-- Main Dashboard Section -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <!-- Left: Terminal Feed -->
+        <!-- MAIN DATA GRID -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- COLUMN 1: LIVE PACKET STREAM -->
+            <div class="lg:col-span-1 bg-slate-900/50 rounded-3xl p-6 border border-white/5 h-fit">
+                <h3 class="text-xs font-black uppercase text-slate-500 mb-4 tracking-widest flex items-center gap-2">
+                    <i class="fas fa-satellite-dish"></i> Incoming Network Data
+                </h3>
+                <div id="data-packets" class="mono text-[10px] space-y-2 text-cyan-800">
+                    <!-- Packets injected by JS -->
+                </div>
+            </div>
+
+            <!-- COLUMN 2: REVENUE METRICS -->
             <div class="lg:col-span-2 space-y-6">
-                <div class="card-glass p-8 rounded-[40px] border-l-4 border-l-cyan-500">
-                    <h2 class="text-2xl font-bold mb-6 flex items-center gap-3">
-                        <i class="fas fa-terminal text-cyan-500"></i> LIVE ORACLE FEED
-                    </h2>
-                    <div class="mono text-sm space-y-3 text-slate-400">
-                        <p><span class="text-cyan-600">[08:42:01]</span> <span class="text-green-500">INIT:</span> 101-Machine successfully hooked to Alchemy ETH-RPC.</p>
-                        <p><span class="text-cyan-600">[08:42:05]</span> <span class="text-blue-500">SCAN:</span> Scanning Uniswap V2/V3 liquidity pairs...</p>
-                        <p><span class="text-cyan-600">[08:42:12]</span> <span class="text-yellow-500">INFO:</span> Revenue Vault 0x7D7A... synchronized.</p>
-                        <p><span class="text-cyan-600">[08:43:00]</span> <span class="text-cyan-400">DATA:</span> IBS Total Supply verified at 30,000,000,000.</p>
-                        <p class="animate-pulse text-cyan-500">_ Listening for transactions...</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="glow-cyan bg-cyan-500/5 rounded-3xl p-8">
+                        <p class="text-xs font-bold text-cyan-500 uppercase mb-2">Total 1% Capture</p>
+                        <h2 id="eth-balance" class="text-4xl font-black text-white">0.0000 <span class="text-sm text-cyan-900">ETH</span></h2>
+                    </div>
+                    <div class="bg-slate-900/50 border border-white/5 rounded-3xl p-8">
+                        <p class="text-xs font-bold text-slate-500 uppercase mb-2">Solana Growth</p>
+                        <h2 class="text-4xl font-black text-white">READY <span class="text-sm text-slate-700">SOL</span></h2>
                     </div>
                 </div>
-            </div>
 
-            <!-- Right: Action Sidebar -->
-            <div class="space-y-6">
-                <div class="card-glass p-8 rounded-[40px] border-t-4 border-t-cyan-500">
-                    <h3 class="text-xl font-bold mb-4 uppercase tracking-tighter text-cyan-400">Master Vault</h3>
-                    <div class="bg-black/50 p-4 rounded-2xl mb-6 mono text-[10px] break-all border border-white/5">
-                        0x7D7A4820355E8597e089BEeB15cEa308cEf3eda3
+                <!-- BLOCKCHAIN LOGS -->
+                <div class="bg-black rounded-3xl p-8 border border-white/5 min-h-[300px]">
+                    <h3 class="text-xs font-black uppercase text-slate-500 mb-4 tracking-widest">Global Activity Log</h3>
+                    <div id="logs" class="mono text-xs text-slate-400 space-y-2">
+                        <p>> [SYSTEM] Initializing Web3 Bridge...</p>
+                        <p>> [SYSTEM] Connected to Alchemy Mainnet.</p>
+                        <p>> [SYSTEM] 30B Supply Verified.</p>
                     </div>
-                    <button class="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-black py-4 rounded-2xl transition-all uppercase tracking-widest text-sm mb-4">
-                        DEPLOY 1% TAX
-                    </button>
-                    <button class="w-full bg-transparent border border-white/10 hover:border-cyan-500 text-white font-bold py-4 rounded-2xl transition-all uppercase tracking-widest text-sm">
-                        VIEW ON ETHERSCAN
-                    </button>
                 </div>
             </div>
         </div>
-    </main>
+    </div>
 
-    <footer class="mt-12 py-12 px-6 border-t border-white/5 text-center">
-        <p class="text-slate-600 text-xs font-bold uppercase tracking-[0.5em]">Ice Gods Empire © 2025 | Built for the 101 Machine</p>
-    </footer>
+    <script>
+        // --- REAL TIME SIMULATION ENGINE ---
+        const logBox = document.getElementById('logs');
+        const packetBox = document.getElementById('data-packets');
+
+        function addLog(msg, color='slate-400') {
+            const p = document.createElement('p');
+            p.className = 'text-' + color;
+            p.innerHTML = '> ' + msg;
+            logBox.prepend(p);
+            if(logBox.children.length > 8) logBox.lastChild.remove();
+        }
+
+        function addPacket() {
+            const networks = ['ETH-MAINNET', 'SOL-MAINNET', 'BASE-L2', 'ARBITRUM'];
+            const net = networks[Math.floor(Math.random()*networks.length)];
+            const hash = '0x' + Math.random().toString(16).slice(2, 10);
+            const p = document.createElement('div');
+            p.innerHTML = `[${net}] INCOMING_DATA: ${hash}... ACCEPTED`;
+            packetBox.prepend(p);
+            if(packetBox.children.length > 15) packetBox.lastChild.remove();
+        }
+
+        // Simulate incoming trade data
+        setInterval(() => {
+            if(Math.random() > 0.7) {
+                addLog('Captured 1% Fee from Swap: ' + (Math.random()*0.01).toFixed(4) + ' ETH', 'cyan-400');
+            }
+            addPacket();
+        }, 2000);
+    </script>
 </body>
 </html>
