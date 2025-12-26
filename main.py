@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Config
+# Config from Environment
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ADMIN_ID = os.getenv("ADMIN_ID")
 ETH_RPC = os.getenv("RPC_URL_ETH")
@@ -57,6 +57,7 @@ def command_handler():
         except: time.sleep(5)
 
 if __name__ == "__main__":
-    send_msg(ADMIN_ID, "🚀 <b>101 MACHINE: RECONSTRUCTION LIVE</b>")
+    if ADMIN_ID:
+        send_msg(ADMIN_ID, "🚀 <b>101 MACHINE: RECONSTRUCTION LIVE</b>")
     threading.Thread(target=revenue_tracker, daemon=True).start()
     command_handler()
