@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Config from Environment
+# System Configuration
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ADMIN_ID = os.getenv("ADMIN_ID")
 ETH_RPC = os.getenv("RPC_URL_ETH")
@@ -18,25 +18,27 @@ w3 = Web3(Web3.HTTPProvider(ETH_RPC))
 
 def send_msg(chat_id, text):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"})
+    try:
+        requests.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"})
+    except: pass
 
-def revenue_tracker():
-    print("📈 Revenue Tracker Active...")
+def revenue_monitor():
+    print("📈 Revenue Monitor Online...")
     try:
         last_bal = float(w3.from_wei(w3.eth.get_balance(MAKER_ADDR), 'ether'))
-    except:
-        last_bal = 0
+    except: last_bal = 0
     while True:
         try:
             curr_bal = float(w3.from_wei(w3.eth.get_balance(MAKER_ADDR), 'ether'))
             if curr_bal > last_bal:
-                send_msg(ADMIN_ID, f"💰 <b>REVENUE CAPTURED!</b>\nGain: +{curr_bal - last_bal:.4f} ETH\nVault: {curr_bal:.4f} ETH")
+                diff = curr_bal - last_bal
+                send_msg(ADMIN_ID, f"💰 <b>REVENUE CAPTURED!</b>\n───\n📈 +{diff:.4f} ETH\n🏦 Vault: {curr_bal:.4f} ETH")
                 last_bal = curr_bal
         except: pass
         time.sleep(30)
 
-def command_handler():
-    print("🎮 Commands Active...")
+def telegram_handler():
+    print("🎮 Command Listener Online...")
     offset = 0
     while True:
         try:
@@ -50,14 +52,14 @@ def command_handler():
                 
                 if "/status" in text:
                     bal = w3.from_wei(w3.eth.get_balance(MAKER_ADDR), 'ether')
-                    status = f"❄️ <b>SYSTEM STATUS</b>\nVault: {float(bal):.4f} ETH\nSupply: 30B IBS"
-                    send_msg(cid, status)
+                    send_msg(cid, f"❄️ <b>SYSTEM STATUS</b>\n───\n💰 <b>Vault:</b> {float(bal):.4f} ETH\n💎 <b>Supply:</b> 30B IBS\n✅ <b>Oracle:</b> Active")
                 elif "/address" in text:
-                    send_msg(cid, f"📋 <b>REGISTRY</b>\nToken: <code>{CONTRACT}</code>\nVault: <code>{MAKER_ADDR}</code>")
+                    send_msg(cid, f"📋 <b>REGISTRY</b>\n───\n💎 <b>Token:</b> <code>{CONTRACT}</code>\n🏦 <b>Vault:</b> <code>{MAKER_ADDR}</code>")
         except: time.sleep(5)
 
 if __name__ == "__main__":
+    print("❄️ ICE GODS MASTER ENGINE STARTING...")
     if ADMIN_ID:
-        send_msg(ADMIN_ID, "🚀 <b>101 MACHINE: RECONSTRUCTION LIVE</b>")
-    threading.Thread(target=revenue_tracker, daemon=True).start()
-    command_handler()
+        send_msg(ADMIN_ID, "🚀 <b>101 MACHINE: ENGINE RECONSTRUCTED</b>\nSystem is live and monitoring.")
+    threading.Thread(target=revenue_monitor, daemon=True).start()
+    telegram_handler()

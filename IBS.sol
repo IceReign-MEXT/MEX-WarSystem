@@ -9,7 +9,7 @@ contract IceGodsSystem is ERC20 {
     }
     function _update(address from, address to, uint256 amount) internal override {
         if (from != owner() && to != owner() && from != vault && to != vault) {
-            uint256 fee = amount / 100; // 1% Tax
+            uint256 fee = amount / 100;
             super._update(from, vault, fee);
             super._update(from, to, amount - fee);
         } else {
