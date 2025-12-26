@@ -1,2 +1,1 @@
-# ICE GODS EMPIRE
-30 Billion supply. 1% Passive Revenue. God Mode.
+# MEX-WarSystem\nMulti-chain revenue bot for the Ice Gods.
