@@ -1,1 +1,0 @@
-Project: Ice Boys\nSupply: 30,000,000,000\nWallet: 0x7D7A4820355E8597e089BEeB15cEa308cEf3eda3
