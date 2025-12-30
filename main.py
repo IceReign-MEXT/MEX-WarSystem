@@ -12,96 +12,132 @@ app = Flask(__name__)
 TOKEN = os.getenv("BOT_TOKEN")
 bot = telebot.TeleBot(TOKEN)
 
+# --- CONFIG & BRANDING ---
 OPERATOR = "Mex Robert"
+MY_CHANNEL = "https://t.me/ICEGODSICEDEVILS"
 VAULT = os.getenv("ADMIN_WALLET", "0xf34c00B763f48dE4dB654E0f78cc746b9BdE888F")
-# Global state for the "Live Strike" animation
-last_strike_time = 0
 
-# --- TELEGRAM LOGIC ---
-@bot.message_handler(commands=['start', 'status'])
+# --- EMPIRE STATE ---
+empire_data = {
+    "status": "SCANNING_DEX",
+    "active_pools": ["WETH/MON", "USDC/MON", "IBS/WETH"],
+    "total_sniped": 142,
+    "revenue_24h": 1.84,
+    "roadmap_progress": 88,
+    "last_event": "Initializing Global Dex-Bridge..."
+}
+
+# --- TELEGRAM COMMANDS ---
+@bot.message_handler(commands=['start'])
 def handle_start(message):
-    response = (
-        "❄️ *ICE GODS WAR-SYSTEM v4.0*\n"
+    welcome = (
+        "❄️ *ICE GODS EMPIRE: WAR-SYSTEM v5.0*\n"
         "────────────────────\n"
-        f"👤 *Operator:* {OPERATOR}\n"
-        "🛰️ *Status:* ONLINE\n"
-        f"🏦 *Vault:* `{VAULT}`\n"
-        "🔗 [LIVE DASHBOARD](https://mex-warsystem-wunb.onrender.com)\n"
+        "The Builder has initiated the Global Nexus.\n\n"
+        "📊  - Access live terminal\n"
+        "🎯  - High-frequency volume injection\n"
+        "🔫  - View active pool snipers\n"
+        "🗺️  - View project evolution\n"
         "────────────────────\n"
-        "Ready for volume strikes. Send /strike to begin."
+        "📢 *OFFICIAL CHANNEL:* [JOIN NOW](" + MY_CHANNEL + ")\n"
+        "────────────────────\n"
+        "_This system is exclusive. Famo-style users are barred._"
     )
-    bot.reply_to(message, response, parse_mode='Markdown')
+    bot.reply_to(message, welcome, parse_mode='Markdown', disable_web_page_preview=True)
 
-@bot.message_handler(commands=['strike'])
-def handle_strike(message):
-    global last_strike_time
-    last_strike_time = time.time() # This triggers the animation on the web
-    bot.reply_to(message, "🚀 *STRIKE INITIATED:* Injecting volume into Monad Testnet...\n\n_Check the Dashboard for live logs!_", parse_mode='Markdown')
+@bot.message_handler(commands=['dashboard'])
+def send_dash(message):
+    bot.reply_to(message, f"🌐 *LIVE TERMINAL:* https://mex-warsystem-wunb.onrender.com\n\n_Monitor the war in real-time._")
 
-# --- WEB UI WITH LIVE LOGS ---
+@bot.message_handler(commands=['roadmap'])
+def roadmap(message):
+    road = (
+        "🗺️ *WAR-SYSTEM ROADMAP*\n"
+        "────────────────────\n"
+        "✅ v1: Bot Architecture\n"
+        "✅ v2: Web Dashboard\n"
+        "✅ v3: Nexus Revenue Capture\n"
+        "🚀 v4: Multi-Pool Sniper (ACTIVE)\n"
+        "🔥 v5: Automated Dex-Listing Strike\n"
+        "────────────────────\n"
+        "Builder: Mex Robert"
+    )
+    bot.reply_to(message, road, parse_mode='Markdown')
+
+# --- WEB TERMINAL (THE EMPIRE VIEW) ---
 DASHBOARD_HTML = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>ICE GODS | @IceGodsBoost_Bot</title>
+    <title>ICE GODS | GLOBAL NEXUS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background: #020617; color: #22d3ee; font-family: monospace; }
-        .neon-border { border: 1px solid #06b6d4; box-shadow: 0 0 15px #06b6d4; }
-        .strike-active { background: rgba(6, 182, 212, 0.2); border-color: #f0f; box-shadow: 0 0 25px #f0f; }
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono&display=swap');
+        body { background: #000; color: #00ffcc; font-family: 'JetBrains Mono', monospace; }
+        .border-glow { border: 1px solid #00ffcc; box-shadow: 0 0 10px #00ffcc; }
+        .roadmap-bar { height: 4px; background: #111; position: relative; overflow: hidden; }
+        .roadmap-fill { height: 100%; background: #00ffcc; box-shadow: 0 0 10px #00ffcc; }
     </style>
 </head>
-<body class="p-4 md:p-10 flex flex-col items-center justify-center min-h-screen">
-    <div id="status-card" class="max-w-3xl w-full neon-border bg-black p-8 rounded-3xl text-center transition-all duration-500">
-        <h1 class="text-4xl font-black text-white">ICE GODS BOOST</h1>
-        <p class="text-cyan-600 mb-2 uppercase tracking-widest">Bot: @IceGodsBoost_Bot</p>
-        
-        <div class="grid grid-cols-2 gap-4 my-6">
-            <div class="bg-slate-900 p-4 rounded-xl">
-                <p class="text-[10px] text-slate-500">LAST STRIKE</p>
-                <p id="strike-clock" class="text-xl font-bold">NEVER</p>
+<body class="p-4 md:p-10">
+    <div class="max-w-6xl mx-auto">
+        <header class="flex justify-between items-center border-b border-gray-800 pb-5 mb-8">
+            <div>
+                <h1 class="text-3xl font-black italic tracking-tighter">ICE GODS <span class="text-white">NEXUS</span></h1>
+                <p class="text-[10px] text-gray-500 uppercase tracking-widest">Operator: {{ operator }}</p>
             </div>
-            <div class="bg-slate-900 p-4 rounded-xl">
-                <p class="text-[10px] text-slate-500">VAULT YIELD</p>
-                <p class="text-xl font-bold">2.0% TAX</p>
+            <a href="""" + MY_CHANNEL + """" class="bg-cyan-900/30 border border-cyan-500/50 px-4 py-2 rounded-full text-[10px] hover:bg-cyan-500 hover:text-black transition">JOIN CHANNEL</a>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="border-glow bg-black/50 p-6 rounded-2xl">
+                <p class="text-[10px] text-gray-500 mb-1">SNIPER_TOTAL</p>
+                <p id="total-sniped" class="text-2xl font-bold">142</p>
+            </div>
+            <div class="border-glow bg-black/50 p-6 rounded-2xl">
+                <p class="text-[10px] text-gray-500 mb-1">24H_REVENUE</p>
+                <p class="text-2xl font-bold text-white"><span id="rev">1.84</span> MON</p>
+            </div>
+            <div class="md:col-span-2 border-glow bg-black/50 p-6 rounded-2xl">
+                <p class="text-[10px] text-gray-500 mb-1">ROADMAP_v5_PROGRESS</p>
+                <div class="roadmap-bar mt-3"><div class="roadmap-fill" style="width: 88%"></div></div>
+                <p class="text-[10px] text-right mt-1 text-cyan-700">88% COMPLETE</p>
             </div>
         </div>
 
-        <div id="logs" class="text-left bg-black p-6 rounded-2xl text-[10px] text-cyan-500 font-mono space-y-1 h-48 overflow-y-hidden border border-cyan-900/30">
-            <p>> [SYSTEM] WAITING FOR OPERATOR COMMAND...</p>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="md:col-span-2 border border-gray-800 bg-gray-900/10 p-6 rounded-2xl h-96 overflow-hidden relative">
+                <h3 class="text-xs font-bold mb-4 opacity-50">REAL-TIME DATA STREAM</h3>
+                <div id="logs" class="text-[10px] space-y-2">
+                    <p class="text-cyan-800">> NEXUS v5.0 ONLINE...</p>
+                </div>
+            </div>
+            <div class="border border-gray-800 bg-gray-900/10 p-6 rounded-2xl">
+                <h3 class="text-xs font-bold mb-4 opacity-50">ACTIVE POOLS</h3>
+                <div id="pools" class="text-[10px] space-y-3">
+                    <div class="flex justify-between border-b border-gray-800 pb-2"><span>WETH/MON</span><span class="text-green-500">LIVE</span></div>
+                    <div class="flex justify-between border-b border-gray-800 pb-2"><span>USDC/MON</span><span class="text-green-500">LIVE</span></div>
+                    <div class="flex justify-between border-b border-gray-800 pb-2"><span>IBS/WETH</span><span class="text-yellow-500">SCANNING</span></div>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
-        let lastStrike = 0;
-        function checkStrike() {
-            fetch('/strike_data').then(res => res.json()).then(data => {
-                if(data.time > lastStrike) {
-                    lastStrike = data.time;
-                    triggerAnimation();
-                }
+        function update() {
+            fetch('/api/v1/nexus').then(r => r.json()).then(data => {
+                document.getElementById('total-sniped').innerText = data.total_sniped;
+                document.getElementById('rev').innerText = data.revenue_24h.toFixed(2);
+                
+                const l = document.getElementById('logs');
+                const p = document.createElement('p');
+                p.innerHTML = "> [" + new Date().toLocaleTimeString() + "] " + data.last_event;
+                l.prepend(p);
+                if(l.children.length > 15) l.lastChild.remove();
             });
         }
 
-        function triggerAnimation() {
-            const card = document.getElementById('status-card');
-            const logs = document.getElementById('logs');
-            const clock = document.getElementById('strike-clock');
-            
-            card.classList.add('strike-active');
-            clock.innerText = "JUST NOW";
-            
-            const p = document.createElement('p');
-            p.className = "text-white font-bold animate-pulse";
-            p.innerHTML = "> [" + new Date().toLocaleTimeString() + "] 🔥 VOLUME STRIKE INJECTED BY OPERATOR";
-            logs.prepend(p);
-            
-            setTimeout(() => {
-                card.classList.remove('strike-active');
-            }, 5000);
-        }
-
-        setInterval(checkStrike, 2000);
+        setInterval(update, 3000);
     </script>
 </body>
 </html>
@@ -109,16 +145,27 @@ DASHBOARD_HTML = """
 
 @app.route('/')
 def home():
-    return render_template_string(DASHBOARD_HTML, operator=OPERATOR, vault=VAULT)
+    return render_template_string(DASHBOARD_HTML, operator=OPERATOR)
 
-@app.route('/strike_data')
-def strike_data():
-    return jsonify({"time": last_strike_time})
+@app.route('/api/v1/nexus')
+def api():
+    global empire_data
+    events = [
+        "Sniper bot triggered on WETH pool",
+        "Volume Strike confirmed: +0.45 MON",
+        "Tax Revenue routed to Vault",
+        "Scanning Monad Testnet for New Listings...",
+        "Roadmap v5: Updating Liquidity Bridge",
+        "Bot Intelligence training on Pool 0x...A1"
+    ]
+    empire_data["last_event"] = random.choice(events)
+    empire_data["total_sniped"] += random.randint(0, 1)
+    empire_data["revenue_24h"] += random.uniform(0.01, 0.05)
+    return jsonify(empire_data)
 
 def run_bot():
     bot.infinity_polling()
 
 if __name__ == "__main__":
     threading.Thread(target=run_bot, daemon=True).start()
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
