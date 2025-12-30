@@ -3,127 +3,97 @@ import threading
 import telebot
 import time
 import random
+import json
 from flask import Flask, render_template_string, jsonify
 from dotenv import load_dotenv
 
 load_dotenv()
 
 app = Flask(__name__)
-TOKEN = os.getenv("BOT_TOKEN") or ""
+TOKEN = os.getenv("BOT_TOKEN")
 bot = telebot.TeleBot(TOKEN)
 
-# --- THE ARCHITECT'S DATA ---
+# --- CONFIG & ASSETS ---
 VAULT_ADDRESS = "0xf34c00B763f48dE4dB654E0f78cc746b9BdE888F"
 MY_CHANNEL = "@ICEGODSICEDEVILS"
-SLOTS_REMAINING = 5 # Scarcity trigger
+DB_FILE = "whitelist.json"
 
-# --- PERSISTENT EMPIRE STATS ---
-stats = {
-    "vault_total": 248.92,
-    "last_snipe": "NONE",
-    "nodes_online": 12,
-    "gate_status": "LOCKED"
-}
+# --- DATABASE LOGIC ---
+def get_whitelist():
+    try:
+        with open(DB_FILE, 'r') as f: return json.load(f)
+    except: return []
 
-# --- AUTOMATED WAR-LOGS ---
-def war_log_engine():
-    """Generates the proof of work that drives the greed of users"""
-    while True:
-        time.sleep(random.randint(400, 800))
-        token = random.choice(["$MON", "$ICE", "$NEXUS", "$GLITCH", "$VAULT"])
-        msg = (
-            "⚠️ **NEXUS SIGNAL DETECTED**\n"
-            f"🎯 Target: `{token}`\n"
-            "📈 Expected Impact: `+18.4%`\n"
-            "────────────────────\n"
-            "Only **PREMIUM** nodes are executing this strike.\n"
-            "🔗 [UPGRADE NOW](https://t.me/IceGodsBoost_Bot)"
-        )
-        try:
-            bot.send_message(MY_CHANNEL, msg, parse_mode='Markdown')
-        except: pass
+def add_to_whitelist(user_id):
+    users = get_whitelist()
+    if user_id not in users:
+        users.append(user_id)
+        with open(DB_FILE, 'w') as f: json.dump(users, f)
 
 # --- BOT INTERFACE ---
-@bot.message_handler(commands=['start'])
+@bot.message_handler(commands=['start', 'dashboard'])
 def handle_start(message):
+    user_id = message.from_user.id
+    whitelist = get_whitelist()
     markup = telebot.types.InlineKeyboardMarkup()
-    web_app = telebot.types.WebAppInfo("https://mex-warsystem-wunb.onrender.com")
+    web_app = telebot.types.WebAppInfo(f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME', 'mex-warsystem-wunb.onrender.com')}")
     
-    markup.add(telebot.types.InlineKeyboardButton("🌐 OPEN TERMINAL", web_app=web_app))
-    markup.add(telebot.types.InlineKeyboardButton("💳 ACTIVATE PREMIUM (0.5 MON)", callback_data="buy_access"))
-    markup.add(telebot.types.InlineKeyboardButton("📢 INTEL FEED", url=f"https://t.me/{MY_CHANNEL[1:]}"))
+    if user_id in whitelist:
+        markup.add(telebot.types.InlineKeyboardButton("🌐 OPEN TERMINAL [ADMIN]", web_app=web_app))
+        status = "✅ AUTHORIZED"
+    else:
+        markup.add(telebot.types.InlineKeyboardButton("💳 ACTIVATE NODE (0.5 MON)", callback_data="buy"))
+        status = "❌ RESTRICTED"
 
-    welcome = (
-        "❄️ **ICE GODS: NEXUS TERMINAL v8.0**\n"
-        "────────────────────\n"
-        "Status: **DEPLOYED & ACTIVE**\n\n"
-        f"🔥 *Limited Access:* Only `{SLOTS_REMAINING}` Premium Nodes remaining.\n"
-        f"🏦 *Vault:* `{VAULT_ADDRESS}`\n"
-        "────────────────────\n"
-        "Click the button below to verify your ID."
-    )
-    bot.send_message(message.chat.id, welcome, parse_mode='Markdown', reply_markup=markup)
+    msg = f"❄️ **NEXUS v8.5 | IRONCLAD**\n\nStatus: {status}\nVault: `{VAULT_ADDRESS}`\n\n_Use /stats to see network health._"
+    bot.send_message(message.chat.id, msg, parse_mode='Markdown', reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda call: call.data == "buy_access")
-def buy_access(call):
-    bot.answer_callback_query(call.id)
-    msg = (
-        "💳 **PREMIUM ACTIVATION PROTOCOL**\n"
+@bot.message_handler(commands=['stats', 'snipers', 'strike'])
+def handle_stats(message):
+    stats_msg = (
+        "📊 **NEXUS NETWORK STATS**\n"
         "────────────────────\n"
-        "1. Send **0.5 MON** to the Vault:\n"
-        f"`{VAULT_ADDRESS}`\n\n"
-        "2. Forward your Transaction Hash to @MexRobert_Admin (Simulated)\n\n"
-        "Once verified, your Telegram ID will be permanently whitelisted."
+        "🎯 Total Snipes: `1,284` \n"
+        "🛰️ Nodes Online: `46/50` \n"
+        "💰 Vault Capture: `284.15 MON` \n"
+        "────────────────────\n"
+        "Status: **OPTIMIZED**"
     )
+    bot.send_message(message.chat.id, stats_msg, parse_mode='Markdown')
+
+@bot.callback_query_handler(func=lambda call: call.data == "buy")
+def handle_buy(call):
+    msg = f"💳 **PAYMENT GATEWAY**\n\nSend **0.5 MON** to:\n`{VAULT_ADDRESS}`\n\nThen DM @MexRobert_Admin"
     bot.send_message(call.message.chat.id, msg, parse_mode='Markdown')
 
-# --- WEB UI (THE PSYCHOLOGICAL WEAPON) ---
+@bot.message_handler(commands=['whitelist'])
+def handle_whitelist(message):
+    # Only you can whitelist
+    if str(message.from_user.id) == "YOUR_TELEGRAM_ID" or message.from_user.username == "MexRobert_Admin":
+        try:
+            target = int(message.text.split()[1])
+            add_to_whitelist(target)
+            bot.reply_to(message, f"✅ ID {target} Whitelisted.")
+        except: bot.reply_to(message, "Usage: /whitelist <id>")
+
+# --- WEB UI ---
 DASHBOARD_HTML = """
 <!DOCTYPE html>
 <html>
-<head>
-    <title>NEXUS | OPERATIONAL</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { background: #000; color: #00ffcc; font-family: 'JetBrains Mono', monospace; }
-        .border-glow { border: 1px solid #00ffcc; box-shadow: 0 0 20px rgba(0, 255, 204, 0.4); }
-        .text-neon { color: #fff; text-shadow: 0 0 5px #00ffcc; }
-    </style>
-</head>
-<body class="p-6">
-    <div class="max-w-md mx-auto">
-        <header class="mb-8 border-b border-zinc-800 pb-4">
-            <h1 class="text-2xl font-black text-neon">NEXUS_v8.0</h1>
-            <p class="text-[8px] text-zinc-500 italic">SECURE CONNECTION: ESTABLISHED</p>
-        </header>
-
-        <div class="grid grid-cols-2 gap-4 mb-8">
-            <div class="border-glow bg-zinc-900/50 p-4 rounded-xl">
-                <p class="text-[8px] text-zinc-400">VAULT_TOTAL</p>
-                <p class="text-xl font-bold"><span id="total">0</span> <span class="text-[10px]">MON</span></p>
-            </div>
-            <div class="border-glow bg-zinc-900/50 p-4 rounded-xl">
-                <p class="text-[8px] text-zinc-400">NODES_ON</p>
-                <p class="text-xl font-bold">12/50</p>
-            </div>
-        </div>
-
-        <div class="bg-zinc-900/20 border border-zinc-800 p-4 rounded-xl h-64 overflow-hidden text-[9px]">
-            <div id="logs" class="space-y-1"></div>
-        </div>
+<head><title>NEXUS</title><script src="https://cdn.tailwindcss.com"></script></head>
+<body class="bg-black text-cyan-400 p-8 font-mono">
+    <h1 class="text-2xl font-bold italic border-b border-cyan-900 pb-2">NEXUS_v8.5</h1>
+    <div class="mt-6 p-4 border border-cyan-500 rounded-xl bg-cyan-900/10">
+        <p class="text-xs text-zinc-500">VAULT_BALANCE</p>
+        <p class="text-3xl font-bold">284.15 <span class="text-sm">MON</span></p>
     </div>
+    <div class="mt-8 space-y-2 text-[10px]" id="logs"></div>
     <script>
-        function update() {
-            fetch('/api/stats').then(r => r.json()).then(data => {
-                document.getElementById('total').innerText = data.vault_total.toFixed(2);
-                const l = document.getElementById('logs');
-                const p = document.createElement('p');
-                p.innerHTML = `<span class="text-zinc-700">[${new Date().toLocaleTimeString()}]</span> SCANNING DEX_LIQUIDITY... <span class="text-white">OK</span>`;
-                l.prepend(p);
-                if(l.children.length > 15) l.lastChild.remove();
-            });
-        }
-        setInterval(update, 2500);
+        setInterval(() => {
+            const p = document.createElement('p');
+            p.innerText = `[${new Date().toLocaleTimeString()}] SCANNING MONAD_MAINNET... OK`;
+            document.getElementById('logs').prepend(p);
+        }, 3000);
     </script>
 </body>
 </html>
@@ -132,10 +102,6 @@ DASHBOARD_HTML = """
 @app.route('/')
 def home(): return render_template_string(DASHBOARD_HTML)
 
-@app.route('/api/stats')
-def api_stats(): return jsonify(stats)
-
 if __name__ == "__main__":
     threading.Thread(target=bot.infinity_polling, daemon=True).start()
-    threading.Thread(target=war_log_engine, daemon=True).start()
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
