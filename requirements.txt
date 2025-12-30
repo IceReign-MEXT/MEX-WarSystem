@@ -1,6 +1,3 @@
-flask
-gunicorn
 pyTelegramBotAPI
 python-dotenv
-requests
-web3
+flask

@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = os.getenv("BOT_TOKEN") or ""
 bot = telebot.TeleBot(TOKEN)
 
 # --- THE ARCHITECT'S DATA ---
