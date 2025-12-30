@@ -12,86 +12,118 @@ app = Flask(__name__)
 TOKEN = os.getenv("BOT_TOKEN")
 bot = telebot.TeleBot(TOKEN)
 
-# --- CONFIG & IDENTITY ---
-OPERATOR = "Mex Robert"
-MY_CHANNEL_ID = "@ICEGODSICEDEVILS" 
+# --- THE ARCHITECT'S DATA ---
 VAULT_ADDRESS = "0xf34c00B763f48dE4dB654E0f78cc746b9BdE888F"
+MY_CHANNEL = "@ICEGODSICEDEVILS"
+SLOTS_REMAINING = 5 # Scarcity trigger
 
-# --- GLOBAL ENGINE STATE ---
+# --- PERSISTENT EMPIRE STATS ---
 stats = {
-    "total_volume": 168.42,
-    "revenue_24h": 3.368,
-    "snipes_count": 184,
-    "status": "MONITORING_DEX",
-    "last_snipe": {"token": "NONE", "gain": "0%"}
+    "vault_total": 248.92,
+    "last_snipe": "NONE",
+    "nodes_online": 12,
+    "gate_status": "LOCKED"
 }
 
-# --- AUTOMATED MARKETING PROBABILITY ---
-def marketing_engine():
+# --- AUTOMATED WAR-LOGS ---
+def war_log_engine():
+    """Generates the proof of work that drives the greed of users"""
     while True:
-        time.sleep(random.randint(480, 900))
-        tokens = ["$ICE-MON", "$WAR-CRY", "$MEX-SNIPE", "$MONAD-GOLD", "$NEXUS-GEM"]
-        token = random.choice(tokens)
-        profit_x = random.choice(["2.5x", "4.1x", "1.8x", "12.4x"])
-        
-        stats["snipes_count"] += 1
-        stats["last_snipe"] = {"token": token, "gain": profit_x}
-        
+        time.sleep(random.randint(400, 800))
+        token = random.choice(["$MON", "$ICE", "$NEXUS", "$GLITCH", "$VAULT"])
         msg = (
-            "🚀 **STRATEGIC SNIPE CONFIRMED** 🚀\n"
+            "⚠️ **NEXUS SIGNAL DETECTED**\n"
+            f"🎯 Target: `{token}`\n"
+            "📈 Expected Impact: `+18.4%`\n"
             "────────────────────\n"
-            f"💎 **Asset:** `{token}`\n"
-            f"📈 **Execution:** {profit_x} Captured\n"
-            f"🏦 **Tax Routed:** `0.0{random.randint(10,99)} MON`\n"
-            "────────────────────\n"
-            "🌐 [LIVE TERMINAL](https://mex-warsystem-wunb.onrender.com)\n"
-            "📡 *Status: NEXUS v6.0 Performance Stable*"
+            "Only **PREMIUM** nodes are executing this strike.\n"
+            "🔗 [UPGRADE NOW](https://t.me/IceGodsBoost_Bot)"
         )
         try:
-            bot.send_message(MY_CHANNEL_ID, msg, parse_mode='Markdown')
-        except:
-            pass
+            bot.send_message(MY_CHANNEL, msg, parse_mode='Markdown')
+        except: pass
 
+# --- BOT INTERFACE ---
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     markup = telebot.types.InlineKeyboardMarkup()
     web_app = telebot.types.WebAppInfo("https://mex-warsystem-wunb.onrender.com")
+    
     markup.add(telebot.types.InlineKeyboardButton("🌐 OPEN TERMINAL", web_app=web_app))
-    welcome = "❄️ *ICE GODS NEXUS: MASTER ACCESS*"
+    markup.add(telebot.types.InlineKeyboardButton("💳 ACTIVATE PREMIUM (0.5 MON)", callback_data="buy_access"))
+    markup.add(telebot.types.InlineKeyboardButton("📢 INTEL FEED", url=f"https://t.me/{MY_CHANNEL[1:]}"))
+
+    welcome = (
+        "❄️ **ICE GODS: NEXUS TERMINAL v8.0**\n"
+        "────────────────────\n"
+        "Status: **DEPLOYED & ACTIVE**\n\n"
+        f"🔥 *Limited Access:* Only `{SLOTS_REMAINING}` Premium Nodes remaining.\n"
+        f"🏦 *Vault:* `{VAULT_ADDRESS}`\n"
+        "────────────────────\n"
+        "Click the button below to verify your ID."
+    )
     bot.send_message(message.chat.id, welcome, parse_mode='Markdown', reply_markup=markup)
 
+@bot.callback_query_handler(func=lambda call: call.data == "buy_access")
+def buy_access(call):
+    bot.answer_callback_query(call.id)
+    msg = (
+        "💳 **PREMIUM ACTIVATION PROTOCOL**\n"
+        "────────────────────\n"
+        "1. Send **0.5 MON** to the Vault:\n"
+        f"`{VAULT_ADDRESS}`\n\n"
+        "2. Forward your Transaction Hash to @MexRobert_Admin (Simulated)\n\n"
+        "Once verified, your Telegram ID will be permanently whitelisted."
+    )
+    bot.send_message(call.message.chat.id, msg, parse_mode='Markdown')
+
+# --- WEB UI (THE PSYCHOLOGICAL WEAPON) ---
 DASHBOARD_HTML = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>NEXUS | MASTER</title>
+    <title>NEXUS | OPERATIONAL</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background: #000; color: #00ffcc; font-family: monospace; }
-        .box { border: 1px solid #00ffcc; background: rgba(0,255,204,0.05); }
+        body { background: #000; color: #00ffcc; font-family: 'JetBrains Mono', monospace; }
+        .border-glow { border: 1px solid #00ffcc; box-shadow: 0 0 20px rgba(0, 255, 204, 0.4); }
+        .text-neon { color: #fff; text-shadow: 0 0 5px #00ffcc; }
     </style>
 </head>
 <body class="p-6">
     <div class="max-w-md mx-auto">
-        <h1 class="text-xl mb-4">NEXUS_v6.0 | <span class="text-xs">MEX ROBERT</span></h1>
-        <div class="grid grid-cols-2 gap-4 mb-4">
-            <div class="box p-4 rounded">REVENUE: <span id="rev">0</span></div>
-            <div class="box p-4 rounded">SNIPES: <span id="snipes">0</span></div>
+        <header class="mb-8 border-b border-zinc-800 pb-4">
+            <h1 class="text-2xl font-black text-neon">NEXUS_v8.0</h1>
+            <p class="text-[8px] text-zinc-500 italic">SECURE CONNECTION: ESTABLISHED</p>
+        </header>
+
+        <div class="grid grid-cols-2 gap-4 mb-8">
+            <div class="border-glow bg-zinc-900/50 p-4 rounded-xl">
+                <p class="text-[8px] text-zinc-400">VAULT_TOTAL</p>
+                <p class="text-xl font-bold"><span id="total">0</span> <span class="text-[10px]">MON</span></p>
+            </div>
+            <div class="border-glow bg-zinc-900/50 p-4 rounded-xl">
+                <p class="text-[8px] text-zinc-400">NODES_ON</p>
+                <p class="text-xl font-bold">12/50</p>
+            </div>
         </div>
-        <div class="box p-4 h-64 overflow-hidden text-[10px]" id="logs"></div>
+
+        <div class="bg-zinc-900/20 border border-zinc-800 p-4 rounded-xl h-64 overflow-hidden text-[9px]">
+            <div id="logs" class="space-y-1"></div>
+        </div>
     </div>
     <script>
         function update() {
             fetch('/api/stats').then(r => r.json()).then(data => {
-                document.getElementById('rev').innerText = data.revenue_24h.toFixed(3);
-                document.getElementById('snipes').innerText = data.snipes_count;
-                const log = document.getElementById('logs');
+                document.getElementById('total').innerText = data.vault_total.toFixed(2);
+                const l = document.getElementById('logs');
                 const p = document.createElement('p');
-                p.innerHTML = `[${new Date().toLocaleTimeString()}] SCANNING... OK`;
-                log.prepend(p);
+                p.innerHTML = `<span class="text-zinc-700">[${new Date().toLocaleTimeString()}]</span> SCANNING DEX_LIQUIDITY... <span class="text-white">OK</span>`;
+                l.prepend(p);
+                if(l.children.length > 15) l.lastChild.remove();
             });
         }
-        setInterval(update, 3000);
+        setInterval(update, 2500);
     </script>
 </body>
 </html>
@@ -105,5 +137,5 @@ def api_stats(): return jsonify(stats)
 
 if __name__ == "__main__":
     threading.Thread(target=bot.infinity_polling, daemon=True).start()
-    threading.Thread(target=marketing_engine, daemon=True).start()
+    threading.Thread(target=war_log_engine, daemon=True).start()
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
