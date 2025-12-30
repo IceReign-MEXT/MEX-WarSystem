@@ -1,6 +1,6 @@
-web3
-requests
-python-dotenv
 flask
 gunicorn
 pyTelegramBotAPI
+python-dotenv
+requests
+web3
