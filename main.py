@@ -2,7 +2,7 @@ import os
 import threading
 import telebot
 import time
-import random
+import random, requests
 import json
 from flask import Flask, render_template_string, jsonify
 from dotenv import load_dotenv
@@ -133,4 +133,22 @@ def api_stats(): return jsonify(market_state)
 if __name__ == "__main__":
     threading.Thread(target=bot.infinity_polling, daemon=True).start()
     threading.Thread(target=global_scanner_engine, daemon=True).start()
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
+
+def heartbeat_ping():
+    """Pings the server every 10 minutes to prevent sleep"""
+    url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME', 'mex-warsystem-wunb.onrender.com')}"
+    while True:
+        try:
+            requests.get(url)
+            print(f"[PING] Heartbeat sent to {url}")
+        except:
+            pass
+        time.sleep(600)
+
+# Start heartbeat inside main
+if __name__ == "__main__":
+    threading.Thread(target=heartbeat_ping, daemon=True).start()
+    threading.Thread(target=bot.infinity_polling, daemon=True).start()
+    threading.Thread(target=revenue_multiplier_engine, daemon=True).start()
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
