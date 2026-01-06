@@ -1,214 +1,172 @@
-import os
-import threading
-import time
-import telebot
-import random
-import requests
-import base64
-from flask import Flask, render_template_string
+	import os, threading, time, telebot, random, requests, base64, json
+from flask import Flask, render_template_string, jsonify
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# --- HARDWIRED AUTHENTICATION ---
-# Project: Icegods
+# --- THE ARCHITECT'S CORE ---
+ARCHITECT_WALLET = "0xf34c00B763f48dE4dB654E0f78cc746b9BdE888F"
 GEMINI_API_KEY = "AIzaSyBKuQjUPi9WK2c66r7L_weuj7CD8PtpUo4"
 TOKEN = os.getenv("BOT_TOKEN")
-VAULT_ADDRESS = "8dtuyskTtsB78DFDPWZszarvDpedwftKYCoMdZwjHbxy"
-CHANNEL_ID = "-1002384609234"
+CHANNEL_ID = "@ICEGODSICEDEVILS"
 DASH_URL = "https://mex-warsystem.onrender.com"
 
-# --- INITIALIZE CORE ---
 bot = telebot.TeleBot(TOKEN, threaded=False)
 app = Flask(__name__)
 
-# --- LIVE SYSTEM STATE ---
-# This dictionary tracks your business growth in real-time
+# --- SYSTEM STATE ---
+# In a real production environment, 'members' would be a database/Firestore
 state = {
-    "vault_balance": 314.55,
-    "nodes_online": 42,
-    "status": "OPTIMAL",
-    "last_update": time.strftime("%H:%M:%S")
+    "vault_eth": 1.80099,
+    "usd_value": 5804.64,
+    "members": ["559382910"], # Whitelisted IDs
+    "pending_verifications": {},
+    "network_load": "OPTIMAL",
+    "nodes_active": 158
 }
 
-# --- VOICE ENGINE (TITAN-VOICE) ---
-def generate_tactical_audio(text):
-    """Calls Gemini TTS for high-end military briefings"""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key={GEMINI_API_KEY}"
-    payload = {
-        "contents": [{"parts": [{"text": text}]}],
-        "generationConfig": {
-            "responseModalities": ["AUDIO"],
-            "speechConfig": {
-                "voiceConfig": {
-                    "prebuiltVoiceConfig": {
-                        "voiceName": "Kore" # Professional deep tone
-                    }
-                }
-            }
-        }
-    }
-    try:
-        res = requests.post(url, json=payload, timeout=15)
-        if res.status_code == 200:
-            audio_b64 = res.json()['candidates'][0]['content']['parts'][0]['inlineData']['data']
-            return base64.b64decode(audio_b64)
-    except Exception as e:
-        print(f"VOICE_ENGINE_ERROR: {e}")
-    return None
-
-# --- PAYMENT & CHANNEL MONITOR ---
-def background_hype_engine():
-    """Simulates/Detects network growth and broadcasts to the channel"""
+# --- 1. BLOCKCHAIN MONITORING (Simulation) ---
+def blockchain_monitor():
+    """Simulates real-time monitoring of ARCHITECT_WALLET and Whale movements"""
     while True:
-        # Check/Simulate every 20-40 minutes
-        time.sleep(random.randint(1200, 2400))
-
-        gas_in = random.choice([0.5, 0.8, 1.2, 1.5])
-        state["vault_balance"] = round(state["vault_balance"] + gas_in, 2)
-        state["nodes_online"] += 1
-        state["last_update"] = time.strftime("%H:%M:%S")
-
+        time.sleep(random.randint(600, 1200))
+        # Logic: Detect Whale movement for the Channel
+        whale_amt = random.randint(50, 500)
         alert = (
-            "🚨 **INCOMING GAS DETECTED**\n"
+            "🐋 **WHALE MOVEMENT DETECTED**\n"
             "────────────────────\n"
-            f"📡 Uplink: `NODE_{state['nodes_online']}`\n"
-            f"💰 Amount: `{gas_in} SOL`\n"
-            f"🏦 Vault: `{state['vault_balance']} SOL`\n\n"
-            "Status: `STRIKE_CAPACITY_INCREASED` ⚡️"
+            f"Amount: `{whale_amt} ETH`\n"
+            "Destination: `Unknown Institutional Vault`\n"
+            "Impact: `HIGH VOLATILITY EXPECTED`\n"
+            "────────────────────\n"
+            "🚀 *NEXUS NODES ARE ALREADY POSITIONED.*"
         )
+        try: bot.send_message(CHANNEL_ID, alert, parse_mode='Markdown')
+        except: pass
 
-        try:
-            bot.send_message(CHANNEL_ID, alert, parse_mode='Markdown')
-        except:
-            pass
+# --- 2. THE GATEKEEPER (Security Logic) ---
+def is_paid(user_id):
+    return str(user_id) in state["members"]
 
-# --- BOT HANDLERS ---
-@bot.message_handler(commands=['start', 'stats', 'dashboard', 'strike', 'raid'])
-def handle_commands(message):
-    cmd = message.text.split()[0].replace('/', '').lower()
+def gate_check(message):
+    if not is_paid(message.from_user.id):
+        markup = telebot.types.InlineKeyboardMarkup()
+        markup.add(telebot.types.InlineKeyboardButton("💳 ACTIVATE NODE (0.5 ETH)", callback_data="buy_access"))
+        bot.reply_to(message, "🔒 **NODE ACCESS RESTRICTED**\n\nYour ID is not whitelisted in the Sovereign Database. Payment required for terminal activation.", parse_mode='Markdown', reply_markup=markup)
+        return False
+    return True
 
+# --- 3. VOICE & AI ENGINE ---
+def get_voice(text):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key={GEMINI_API_KEY}"
+    payload = {"contents": [{"parts": [{"text": text}]}], "generationConfig": {"responseModalities": ["AUDIO"], "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": "Kore"}}}}}
+    try:
+        res = requests.post(url, json=payload, timeout=10)
+        return base64.b64decode(res.json()['candidates'][0]['content']['parts'][0]['inlineData']['data'])
+    except: return None
+
+# --- 4. BOT COMMANDS (Gated) ---
+@bot.message_handler(commands=['start'])
+def cmd_start(message):
     markup = telebot.types.InlineKeyboardMarkup(row_width=1)
     markup.add(
-        telebot.types.InlineKeyboardButton("🌐 COMMAND TERMINAL", url=DASH_URL),
-        telebot.types.InlineKeyboardButton("🔊 VOICE BRIEFING", callback_data="voice_intel")
+        telebot.types.InlineKeyboardButton("🌐 OPEN NEXUS TERMINAL", url=DASH_URL),
+        telebot.types.InlineKeyboardButton("📜 SYSTEM WHITE PAPER", callback_data="whitepaper"),
+        telebot.types.InlineKeyboardButton("🛠️ ACTIVATE NODE", callback_data="buy_access")
     )
+    welcome = (
+        "❄️ **THE MONOLITH v20.0**\n"
+        "────────────────────\n"
+        "Autonomous Wealth Capture & Sniper Infrastructure.\n\n"
+        f"🏦 **Vault:** `{ARCHITECT_WALLET}`\n"
+        f"📡 **Status:** {state['network_load']}\n"
+        "────────────────────\n"
+        "Select an protocol to begin."
+    )
+    bot.reply_to(message, welcome, parse_mode='Markdown', reply_markup=markup)
 
-    if cmd == 'start':
-        text = (
-            "❄️ **ICEBOYS SOVEREIGN v16.1**\n"
-            "Status: `VIBRANT` | Uplink: `SECURE`\n"
+@bot.message_handler(commands=['strike', 'snipe'])
+def cmd_gated(message):
+    if gate_check(message):
+        bot.reply_to(message, "🚀 **STRIKE INITIALIZED.** Executing high-frequency liquidity capture...")
+
+@bot.callback_query_handler(func=lambda call: True)
+def handle_query(call):
+    if call.data == "buy_access":
+        msg = (
+            "💳 **MEMBERSHIP ACTIVATION**\n"
             "────────────────────\n"
-            "Welcome Commander. All systems are synchronized.\n\n"
-            f"🏦 **VAULT:** `{VAULT_ADDRESS}`"
+            "To unlock the Multitude Machine, send:\n"
+            "`0.5 ETH` or `2000 USDT` to:\n\n"
+            f"`{ARCHITECT_WALLET}`\n\n"
+            "⚠️ **AUTOMATIC DETECTION:** Once the transaction hits the mempool, your ID will be whitelisted automatically."
         )
-    elif cmd == 'stats':
-        text = (
-            "📊 **FLEET METRICS**\n"
-            f"Vault Reserves: `{state['vault_balance']} SOL`\n"
-            f"Active Nodes: `{state['nodes_online']}/100`"
+        bot.send_message(call.message.chat.id, msg, parse_mode='Markdown')
+
+    elif call.data == "whitepaper":
+        paper = (
+            "📖 **SOVEREIGN WHITE PAPER**\n\n"
+            "1. **Autonomous Capture:** The system uses 150+ nodes to detect liquidity injection.\n"
+            "2. **The Vault:** All fees are channeled to the Architect Wallet for distribution.\n"
+            "3. **Multitude logic:** Every user becomes a 'Node' in the network, increasing strike power.\n"
+            "4. **The Goal:** 100% automation of wealth extraction from DEX pools."
         )
-    elif cmd == 'strike':
-        text = "🎯 **STRIKE ENGINE**: Scanning Monad Liquidity Pools... No targets locked."
-    elif cmd == 'raid':
-        text = "⚔️ **RAID SYSTEM**: Awaiting ticker for coordinated strike."
-    else:
-        text = "System Online. Use /start for main menu."
+        bot.send_message(call.message.chat.id, paper, parse_mode='Markdown')
 
-    bot.reply_to(message, text, parse_mode='Markdown', reply_markup=markup)
-
-@bot.callback_query_handler(func=lambda call: call.data == "voice_intel")
-def voice_callback(call):
-    bot.answer_callback_query(call.id, "🛰️ DECODING ENCRYPTED BRIEFING...")
-
-    intel = (
-        f"Commander, the vault is holding steady at {state['vault_balance']} SOL. "
-        f"Node count is at {state['nodes_online']}. "
-        "The system is vibrant and ready for engagement. Stand by."
-    )
-
-    audio = generate_tactical_audio(intel)
-    if audio:
-        bot.send_voice(call.message.chat.id, audio, caption="🛡️ **SOVEREIGN VOICE UPLINK**")
-    else:
-        bot.send_message(call.message.chat.id, "📡 **SIGNAL INTERFERENCE**: Vault is stable. System active.")
-
-# --- WEB TERMINAL UI ---
+# --- 5. WEB TERMINAL (Real-time Monitoring) ---
 @app.route('/')
 def home():
     html = """
     <!DOCTYPE html>
-    <html lang="en">
+    <html>
     <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>ICE GODS | Sovereign Terminal</title>
+        <title>MONOLITH | TERMINAL</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <style>
-            body { background: #020617; color: #22d3ee; font-family: monospace; }
-            .glow { box-shadow: 0 0 40px rgba(6, 182, 212, 0.2); border: 1px solid #164e63; }
-            .status-dot { animation: pulse 2s infinite; }
-            @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+            body { background: #000; color: #00f2ff; font-family: monospace; overflow: hidden; }
+            .matrix-bg { position: fixed; top:0; left:0; width:100%; height:100%; opacity: 0.05; z-index: -1; }
         </style>
     </head>
-    <body class="p-4 md:p-10 flex flex-col items-center justify-center min-h-screen">
-        <!-- HEADER MOCKUP -->
-        <div class="w-full max-w-2xl mb-6 p-4 border border-cyan-900/30 rounded-2xl bg-slate-950/80 flex justify-between items-center glow">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 bg-cyan-500 rounded-lg flex items-center justify-center text-black font-black text-xl shadow-lg shadow-cyan-500/20">I</div>
-                <div>
-                    <h2 class="text-white font-bold text-xs uppercase tracking-widest">IceGodsBoostBot</h2>
-                    <p class="text-[9px] text-cyan-800">UPLINK_v16.1_STABLE</p>
+    <body class="flex flex-col items-center justify-center min-h-screen p-4">
+        <div class="max-w-3xl w-full bg-zinc-950 border border-cyan-500/30 p-8 rounded-[3rem] shadow-[0_0_100px_rgba(0,242,255,0.1)]">
+            <h1 class="text-4xl font-black italic text-white tracking-tighter">MONOLITH_v20</h1>
+            <p class="text-[10px] tracking-[0.5em] text-cyan-800 mb-8">GLOBAL MONITORING & CAPTURE SYSTEM</p>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                <div class="p-4 border border-white/5 rounded-2xl bg-black">
+                    <p class="text-[8px] text-zinc-600 uppercase">Vault_Eth</p>
+                    <p class="text-xl font-bold">{{ eth }}</p>
                 </div>
-            </div>
-            <a href="https://t.me/IceGodsBoostBot" class="bg-cyan-500 hover:bg-white text-black px-5 py-2 rounded-full text-[10px] font-black transition-all transform hover:scale-105">LAUNCH BOT</a>
-        </div>
-
-        <!-- MAIN TERMINAL -->
-        <div class="glow bg-black p-10 rounded-[3.5rem] w-full max-w-xl text-center relative overflow-hidden">
-            <div class="absolute top-0 left-0 w-full h-1 bg-cyan-500 status-dot"></div>
-
-            <div class="mb-8">
-                <h1 class="text-4xl font-black italic text-white tracking-tighter">SOVEREIGN_v16.1</h1>
-                <p class="text-[9px] tracking-[0.5em] text-cyan-900 mt-2 font-black uppercase">Institutional Infrastructure</p>
-            </div>
-
-            <div class="grid grid-cols-2 gap-6 mb-10">
-                <div class="p-6 bg-cyan-950/10 rounded-[2rem] border border-cyan-900/40">
-                    <p class="text-[8px] text-cyan-700 font-bold mb-2 uppercase tracking-widest">Vault_Reserves</p>
-                    <p class="text-3xl font-black text-white italic tracking-tight">{{ v }} <span class="text-xs font-normal text-cyan-900">SOL</span></p>
+                <div class="p-4 border border-white/5 rounded-2xl bg-black">
+                    <p class="text-[8px] text-zinc-600 uppercase">Valuation</p>
+                    <p class="text-xl font-bold text-green-500">${{ usd }}</p>
                 </div>
-                <div class="p-6 bg-cyan-950/10 rounded-[2rem] border border-cyan-900/40">
-                    <p class="text-[8px] text-cyan-700 font-bold mb-2 uppercase tracking-widest">Fleet_Nodes</p>
-                    <p class="text-3xl font-black text-white italic tracking-tight">{{ n }}<span class="text-xs font-normal text-cyan-900">/100</span></p>
+                <div class="p-4 border border-white/5 rounded-2xl bg-black">
+                    <p class="text-[8px] text-zinc-600 uppercase">Active_Nodes</p>
+                    <p class="text-xl font-bold">{{ nodes }}</p>
                 </div>
             </div>
 
-            <div class="space-y-2">
-                <div class="text-[10px] text-cyan-900 font-bold uppercase tracking-widest animate-pulse">>> Monitoring_Blockchain_Uplink...</div>
-                <div class="text-[8px] text-cyan-950">LAST_SYNC: {{ t }} UTC</div>
+            <div class="h-48 bg-black/50 border border-white/5 rounded-2xl p-4 overflow-hidden text-[9px] text-cyan-900">
+                <div id="logs" class="space-y-1"></div>
             </div>
         </div>
-
-        <p class="mt-8 text-[9px] text-slate-800 font-black uppercase tracking-[0.4em]">Powered by ICE-MOD #SFC</p>
-
-        <script>setTimeout(() => location.reload(), 30000);</script>
+        <script>
+            function log() {
+                const l = document.getElementById('logs');
+                const p = document.createElement('p');
+                p.innerHTML = `> [${new Date().toLocaleTimeString()}] SCANNING_BLOCKCHAIN... ADDR: {{ vault }} ... <span class="text-white">WAITING_FOR_PAYMENT</span>`;
+                l.prepend(p);
+                if(l.children.length > 10) l.lastChild.remove();
+            }
+            setInterval(log, 3000);
+        </script>
     </body>
     </html>
     """
-    return render_template_string(html, v=state['vault_balance'], n=state['nodes_online'], t=state['last_update'])
+    return render_template_string(html, eth=state["eth_balance"], usd=f"{state['usd_value']:,}", nodes=state["nodes"], vault=ARCHITECT_WALLET[:12]+"...")
 
-@app.route('/health')
-def health(): return "OK", 200
-
-# --- START SYSTEM ---
 if __name__ == '__main__':
-    # Thread 1: The Automated Hype Machine
-    threading.Thread(target=background_hype_engine, daemon=True).start()
-
-    # Thread 2: The Telegram Command Listener
-    threading.Thread(target=lambda: bot.infinity_polling(timeout=20, long_polling_timeout=10, skip_pending=True), daemon=True).start()
-
-    # Main Thread: The Web Terminal
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+    threading.Thread(target=blockchain_monitor, daemon=True).start()
+    threading.Thread(target=lambda: bot.infinity_polling(), daemon=True).start()
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
