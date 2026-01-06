@@ -1,72 +1,95 @@
 import os, threading, time, telebot, random, requests, base64, json
-from flask import Flask, render_template_string, jsonify
+from flask import Flask, render_template_string
 
-# --- THE ARCHITECT'S CORE ---
-ARCHITECT_WALLET = "0xf34c00B763f48dE4dB654E0f78cc746b9BdE888F"
-GEMINI_API_KEY = "AIzaSyBKuQjUPi9WK2c66r7L_weuj7CD8PtpUo4"
+# --- CONFIGURATION (DUAL-VAULT) ---
+VAULT_ETH = "0xf34c00B763f48dE4dB654E0f78cc746b9BdE888F"
+VAULT_SOL = "8dtuyskTtsB78DFDPWZszarvDpedwftKYCoMdZwjHbxy"
 TOKEN = os.environ.get("BOT_TOKEN")
 CHANNEL_ID = "@ICEGODSICEDEVILS"
-DASH_URL = "https://ice-gods-nexus.vercel.app"
 
 bot = telebot.TeleBot(TOKEN, threaded=False)
 app = Flask(__name__)
 
-# --- SYSTEM STATE ---
+# --- MONETIZATION & MEMBERSHIP ---
+# Add your ID or user IDs here manually to unlock them
 state = {
-    "eth_vault": 1.80099,
-    "usd_valuation": 5804.64,
-    "verified_members": ["559382910"],
-    "nodes_active": 158
+    "members": ["559382910"],
+    "nodes": 54,
+    "sol_reserves": 335.55,
+    "eth_reserves": 1.80099
 }
 
-# 1. WHALE SURVEILLANCE
-def surveillance_engine():
+def is_paid(uid):
+    return str(uid) in state["members"]
+
+# --- DUAL-CHAIN SURVEILLANCE ---
+def global_monitoring():
     while True:
-        time.sleep(random.randint(1200, 2400))
-        whale_amt = random.randint(50, 450)
+        time.sleep(random.randint(900, 1800))
+        chain = random.choice(["SOLANA", "ETHEREUM"])
+        whale_amt = random.randint(100, 1000)
+
         alert = (
-            "🐋 **MULTITUDE WHALE DETECTION**\n"
+            f"🚨 **{chain} WHALE ALERT** 🚨\n"
             "────────────────────\n"
-            f"Value: `{whale_amt} ETH`\n"
-            "Target: `Liquidity Pool Alpha`\n"
+            f"Detected: `{whale_amt} {'SOL' if chain=='SOLANA' else 'ETH'}` movement.\n"
+            f"Target: `High-Vol Liquidity Pool`\n"
+            "Action: `Front-Run Nodes Prepped`\n"
             "────────────────────\n"
-            "📊 **STATUS:** `NODES PRIMED`"
+            "❄️ **ICE GODS SURVEILLANCE: BETTER THAN ALIENS BRAIN.**"
         )
         try: bot.send_message(CHANNEL_ID, alert, parse_mode='Markdown')
         except: pass
 
-# 2. THE GATEKEEPER
-def is_authorized(user_id):
-    return str(user_id) in state["verified_members"]
-
-@bot.message_handler(commands=['start'])
+# --- COMMAND HANDLERS (FULL SUITE) ---
+@bot.message_handler(commands=['start', 'menu'])
 def cmd_start(message):
-    markup = telebot.types.InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        telebot.types.InlineKeyboardButton("🌐 NEXUS TERMINAL", url=DASH_URL),
-        telebot.types.InlineKeyboardButton("⚡ ACTIVATE NODE", callback_data="pay")
+    msg = (
+        "❄️ **ICE GODS MONOLITH V21: DUAL-CHAIN**\n"
+        "────────────────────\n"
+        "The most powerful autonomous infrastructure on SOL & ETH.\n\n"
+        f"🏦 **SOL Vault:** `{VAULT_SOL}`\n"
+        f"🏦 **ETH Vault:** `{VAULT_ETH}`\n"
+        "────────────────────\n"
+        "Status: **ONLINE - 54 NODES ACTIVE**"
     )
-    bot.reply_to(message, "❄️ **MONOLITH v20.0**\n\nStatus: `CONNECTED`\nVault: `0xf34c...888F`", parse_mode='Markdown', reply_markup=markup)
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(telebot.types.InlineKeyboardButton("🌐 OPEN TERMINAL", url="https://ice-gods-nexus.vercel.app"))
+    markup.add(telebot.types.InlineKeyboardButton("🛠️ ACTIVATE NODE", callback_data="pay"))
+    bot.reply_to(message, msg, parse_mode='Markdown', reply_markup=markup)
 
-@bot.message_handler(func=lambda m: True)
-def handle_all(message):
-    if not is_authorized(message.from_user.id):
-        markup = telebot.types.InlineKeyboardMarkup()
-        markup.add(telebot.types.InlineKeyboardButton("💳 ACTIVATE (0.5 ETH)", callback_data="pay"))
-        bot.reply_to(message, "🔒 **ACCESS DENIED.**\nSubscription required.", parse_mode='Markdown', reply_markup=markup)
+@bot.message_handler(commands=['strike', 'snipe', 'raid', 'stats', 'roadmap', 'snipers'])
+def handle_all_commands(message):
+    cmd = message.text.split()[0].replace('/', '').upper()
+
+    if not is_paid(message.from_user.id):
+        bot.reply_to(message, "🔒 **ACCESS DENIED.**\n\nThis command is reserved for **Verified Nodes**. Please pay the 0.5 ETH / 5 SOL activation fee to join the Multitude.", parse_mode='Markdown')
         return
-    bot.reply_to(message, "🚀 **COMMAND EXECUTED.**")
+
+    # PAID RESPONSES
+    responses = {
+        "STRIKE": "🎯 **STRIKE ENGINE:** Scanning Dual-Chain pools... Targets Locked.",
+        "SNIPE": "🔫 **SNIPER PROTOCOL:** Awaiting token launch on Raydium/Uniswap.",
+        "RAID": "⚔️ **RAID SYSTEM:** Preparing coordinated social strike.",
+        "STATS": f"📊 **FLEET METRICS:**\nVault: {state['sol_reserves']} SOL / {state['eth_reserves']} ETH\nNodes: 54/100",
+        "ROADMAP": "🗺️ **ROADMAP:** v21 Deployment -> Dual-Chain Domination -> AI-Snipe V2.",
+        "SNIPERS": "📡 **SNIPER NODES:** 54 Active nodes scanning mempool."
+    }
+    bot.reply_to(message, responses.get(cmd, "Command Online."), parse_mode='Markdown')
 
 @bot.callback_query_handler(func=lambda c: c.data == "pay")
 def pay_callback(call):
-    bot.send_message(call.message.chat.id, f"💳 **VAULT PROTOCOL**\n\nSend 0.5 ETH to:\n`{ARCHITECT_WALLET}`")
-
-# 3. WEB INTERFACE
-@app.route('/')
-def home():
-    return "MONOLITH NODE ACTIVE"
+    pay_msg = (
+        "💳 **ACTIVATION PROTOCOL**\n\n"
+        "To activate your node, send:\n"
+        "**0.5 ETH** or **5 SOL** to the vaults below:\n\n"
+        f"ETH: `{VAULT_ETH}`\n"
+        f"SOL: `{VAULT_SOL}`\n\n"
+        "Once done, the machine detects the TX and whitelists you."
+    )
+    bot.send_message(call.message.chat.id, pay_msg, parse_mode='Markdown')
 
 if __name__ == '__main__':
-    threading.Thread(target=surveillance_engine, daemon=True).start()
+    threading.Thread(target=global_monitoring, daemon=True).start()
     threading.Thread(target=lambda: bot.infinity_polling(), daemon=True).start()
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
