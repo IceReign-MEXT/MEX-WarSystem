@@ -117,52 +117,31 @@ def handle_query(call):
 @app.route('/')
 def home():
     html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>MONOLITH | TERMINAL</title>
-        <script src="https://cdn.tailwindcss.com"></script>
-        <style>
-            body { background: #000; color: #00f2ff; font-family: monospace; overflow: hidden; }
-            .matrix-bg { position: fixed; top:0; left:0; width:100%; height:100%; opacity: 0.05; z-index: -1; }
-        </style>
-    </head>
-    <body class="flex flex-col items-center justify-center min-h-screen p-4">
-        <div class="max-w-3xl w-full bg-zinc-950 border border-cyan-500/30 p-8 rounded-[3rem] shadow-[0_0_100px_rgba(0,242,255,0.1)]">
-            <h1 class="text-4xl font-black italic text-white tracking-tighter">MONOLITH_v20</h1>
-            <p class="text-[10px] tracking-[0.5em] text-cyan-800 mb-8">GLOBAL MONITORING & CAPTURE SYSTEM</p>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ICE GODS | NEXUS TERMINAL</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- JetBrains Mono for that high-tech terminal look -->
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,800;1,400;1,800&display=swap" rel="stylesheet">
+    <style>
+      body {
+        margin: 0;
+        background-color: #000;
+        font-family: 'JetBrains Mono', monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                <div class="p-4 border border-white/5 rounded-2xl bg-black">
-                    <p class="text-[8px] text-zinc-600 uppercase">Vault_Eth</p>
-                    <p class="text-xl font-bold">{{ eth }}</p>
-                </div>
-                <div class="p-4 border border-white/5 rounded-2xl bg-black">
-                    <p class="text-[8px] text-zinc-600 uppercase">Valuation</p>
-                    <p class="text-xl font-bold text-green-500">${{ usd }}</p>
-                </div>
-                <div class="p-4 border border-white/5 rounded-2xl bg-black">
-                    <p class="text-[8px] text-zinc-600 uppercase">Active_Nodes</p>
-                    <p class="text-xl font-bold">{{ nodes }}</p>
-                </div>
-            </div>
-
-            <div class="h-48 bg-black/50 border border-white/5 rounded-2xl p-4 overflow-hidden text-[9px] text-cyan-900">
-                <div id="logs" class="space-y-1"></div>
-            </div>
-        </div>
-        <script>
-            function log() {
-                const l = document.getElementById('logs');
-                const p = document.createElement('p');
-                p.innerHTML = `> [${new Date().toLocaleTimeString()}] SCANNING_BLOCKCHAIN... ADDR: {{ vault }} ... <span class="text-white">WAITING_FOR_PAYMENT</span>`;
-                l.prepend(p);
-                if(l.children.length > 10) l.lastChild.remove();
-            }
-            setInterval(log, 3000);
-        </script>
-    </body>
-    </html>
     """
     return render_template_string(html, eth=state["eth_balance"], usd=f"{state['usd_value']:,}", nodes=state["nodes"], vault=ARCHITECT_WALLET[:12]+"...")
 
