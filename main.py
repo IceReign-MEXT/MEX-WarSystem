@@ -1,67 +1,120 @@
-import os, threading, time, telebot, random
+import os, threading, time, telebot, random, requests, base64
 from flask import Flask, render_template_string, jsonify
 from dotenv import load_dotenv
 
 load_dotenv()
+# --- CONFIG ---
 TOKEN = os.getenv("BOT_TOKEN")
-PORT = int(os.environ.get("PORT", 10000))
+# YOUR ACTUAL RENDER URL
+DASH_URL = "https://mex-warsystem.onrender.com"
+VAULT = "8dtuyskTtsB78DFDPWZszarvDpedwftKYCoMdZwjHbxy"
+# Your Channel IDs
+CHANNEL_ID = "-1002384609234" 
 
-# Initialize bot with a single-thread to prevent API Conflicts
 bot = telebot.TeleBot(TOKEN, threaded=False)
 app = Flask(__name__)
 
-# --- LIVE STATE ---
-VAULT = "0xf34c00B763f48dE4dB654E0f78cc746b9BdE888F"
-state = {"vault": 314.55, "scans": 12405, "nodes": 142}
+# --- SYSTEM STATE ---
+state = {
+    "vault_balance": 314.55,
+    "nodes_online": 42,
+    "status": "OPTIMAL",
+    "last_tx": "None"
+}
 
-# --- COMMANDS ---
-@bot.message_handler(commands=['start', 'dashboard', 'strike', 'raid', 'stats', 'roadmap'])
-def handle_all_commands(message):
-    cmd = message.text.split()[0].replace('/', '')
-    
-    markup = telebot.types.InlineKeyboardMarkup()
-    markup.add(telebot.types.InlineKeyboardButton("🌐 OPEN TERMINAL", url="https://mex-warsystem-wunb.onrender.com"))
-    
-    responses = {
-        "start": f"⚔️ **MEX WAR-SYSTEM v12.5**\nStatus: `WEAPONIZED`\nVault: `{VAULT}`",
-        "strike": "🔫 **STRIKE ENGINE**: `ACTIVE`\nTarget: `MONAD_DEVNET`\nStatus: `SCANNING_LIQUIDITY`",
-        "raid": "⚔️ **RAID STATUS**: `122 COMPLETED`\nNext Target: `CALCULATING...`",
-        "stats": f"📊 **STATS**\nVault: `{state['vault']} MON`\nNodes: `{state['nodes']}`",
-        "roadmap": "🗺️ **ROADMAP**\nPhase 2: Global Strike Engine (ACTIVE)"
+# --- AUDIO GENERATION (TTS) ---
+def get_audio_benefit(text):
+    """Generates a professional voice briefing using Gemini TTS"""
+    api_key = "" # Environment provides this
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key={api_key}"
+    payload = {
+        "contents": [{"parts": [{"text": f"Commander, here is your update: {text}"}]}],
+        "generationConfig": {
+            "responseModalities": ["AUDIO"],
+            "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": "Kore"}}}
+        }
     }
-    
-    text = responses.get(cmd, "System Online. Use /start to view menu.")
-    bot.reply_to(message, text, parse_mode='Markdown', reply_markup=markup)
+    try:
+        res = requests.post(url, json=payload, timeout=10)
+        audio_data = res.json()['candidates'][0]['content']['parts'][0]['inlineData']['data']
+        return base64.b64decode(audio_data)
+    except:
+        return None
 
-# --- WEB DASHBOARD ---
+# --- BOT COMMANDS ---
+@bot.message_handler(commands=['start', 'dashboard'])
+def cmd_start(message):
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(telebot.types.InlineKeyboardButton("🌐 LIVE DASHBOARD", url=DASH_URL))
+    markup.add(telebot.types.InlineKeyboardButton("🔊 VOICE BRIEFING", callback_data="get_audio"))
+    
+    msg = (
+        "❄️ **ICEBOYS SOVEREIGN V15.1**\n"
+        "Status: `OPTIMAL` | Nodes: `42/42`\n"
+        "────────────────────\n"
+        "Institutional engine online. Commander, select sequence.\n\n"
+        f"🏦 **VAULT:** `{VAULT}`"
+    )
+    bot.reply_to(message, msg, parse_mode='Markdown', reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data == "get_audio")
+def audio_callback(call):
+    bot.answer_callback_query(call.id, "Generating Tactical Audio...")
+    audio = get_audio_benefit(f"The sovereign fleet is synchronized. Vault balance is {state['vault_balance']} SOL. Standing by for engagement.")
+    if audio:
+        bot.send_voice(call.message.chat.id, audio, caption="🛡️ **SOVEREIGN VOICE UPLINK**")
+    else:
+        bot.send_message(call.message.chat.id, "❌ **UPLINK TIMEOUT:** Signal weak. Try again.")
+
+# --- AUTO-DETECTION SIMULATOR (Broadcasting to Group) ---
+def auto_detector():
+    while True:
+        time.sleep(random.randint(600, 1200)) # Randomly detect "payments"
+        amt = random.choice([0.5, 0.8, 1.5])
+        state["vault_balance"] += amt
+        
+        alert = (
+            "🚨 **INCOMING GAS DETECTED**\n"
+            "────────────────────\n"
+            f"Amount: `{amt} SOL`\n"
+            "Action: `NODE_ACTIVATION`\n"
+            "Status: `ENGAGING_RAYDIUM_LP`"
+        )
+        try:
+            bot.send_message(CHANNEL_ID, alert, parse_mode='Markdown')
+        except:
+            pass
+
+# --- DASHBOARD HTML ---
 @app.route('/')
 def home():
     return render_template_string("""
-    <body style="background:#000;color:#0f0;font-family:monospace;padding:40px;text-align:center;">
-        <h1 style="border:1px solid #0f0;padding:20px;display:inline-block;">NEXUS_WAR_TERMINAL_v12.5</h1>
-        <div style="margin-top:20px;">
-            <p>SYSTEM_STATUS: <span style="color:#fff;">VIBRANT</span></p>
-            <p>VAULT_RESERVE: <span style="color:#fff;">{{v}} MON</span></p>
-            <p>ACTIVE_STRIKES: <span style="color:#fff;">{{s}}</span></p>
+    <!DOCTYPE html>
+    <html>
+    <head><title>ICEBOYS TERMINAL</title><script src="https://cdn.tailwindcss.com"></script></head>
+    <body class="bg-black text-cyan-500 font-mono p-10 flex flex-col items-center justify-center min-h-screen">
+        <div class="border-2 border-cyan-900 p-10 rounded-[3rem] bg-zinc-950 shadow-[0_0_50px_rgba(0,255,255,0.1)]">
+            <h1 class="text-3xl font-black italic mb-6">ICEBOYS_SOVEREIGN</h1>
+            <div class="grid grid-cols-2 gap-6">
+                <div class="p-4 bg-cyan-950/20 rounded-2xl border border-cyan-900">
+                    <p class="text-[10px] text-cyan-700 font-bold">VAULT_TOTAL</p>
+                    <p class="text-2xl font-bold text-white">{{ v }} SOL</p>
+                </div>
+                <div class="p-4 bg-cyan-950/20 rounded-2xl border border-cyan-900">
+                    <p class="text-[10px] text-cyan-700 font-bold">FLEET_NODES</p>
+                    <p class="text-2xl font-bold text-white">{{ n }}</p>
+                </div>
+            </div>
+            <p class="mt-8 text-center text-[10px] animate-pulse">>> MONITORING_SOLANA_MAINNET_WSS...</p>
         </div>
         <script>setTimeout(()=>location.reload(), 5000)</script>
     </body>
-    """, v=state['vault'], s=state['scans'])
+    """, v=state['vault_balance'], n=state['nodes_online'])
 
 @app.route('/health')
 def health(): return "OK", 200
 
-# --- RUNNERS ---
-def run_bot():
-    print("LOG: Starting Bot Polling...")
-    while True:
-        try:
-            bot.polling(none_stop=True, interval=1, timeout=20)
-        except Exception as e:
-            print(f"ERROR: {e}")
-            time.sleep(5)
-
 if __name__ == '__main__':
-    threading.Thread(target=run_bot, daemon=True).start()
-    print(f"LOG: Starting Web Server on Port {PORT}...")
-    app.run(host='0.0.0.0', port=PORT)
+    threading.Thread(target=auto_detector, daemon=True).start()
+    threading.Thread(target=lambda: bot.infinity_polling(skip_pending=True), daemon=True).start()
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
