@@ -3,102 +3,143 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ICE GODS | Global Data Bridge</title>
+    <title>ICE GODS | Sovereign War-System</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
-        body { background-color: #020617; color: #f8fafc; font-family: sans-serif; }
-        .mono { font-family: 'JetBrains Mono', monospace; }
-        .glow-cyan { box-shadow: 0 0 20px rgba(34, 211, 238, 0.2); border: 1px solid rgba(34, 211, 238, 0.3); }
-        .data-stream { height: 200px; overflow-y: hidden; }
-        @keyframes slide { from { transform: translateY(0); } to { transform: translateY(-100%); } }
+        body { background-color: #020617; color: #f8fafc; font-family: 'JetBrains Mono', monospace; }
+        .glow-cyan { box-shadow: 0 0 30px rgba(6, 182, 212, 0.2); border: 1px solid rgba(6, 182, 212, 0.4); }
+        .crt-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            background-size: 100% 2px, 3px 100%; pointer-events: none; z-index: 100;
+        }
+        .scanline {
+            width: 100%; height: 2px; background: rgba(34, 211, 238, 0.1);
+            position: absolute; animation: scan 6s linear infinite; z-index: 101;
+        }
+        @keyframes scan { from { top: 0; } to { top: 100%; } }
     </style>
 </head>
-<body class="p-4 md:p-8">
-    <div class="max-w-6xl mx-auto">
-        <!-- HEADER -->
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-            <div>
-                <h1 class="text-4xl font-black text-white tracking-tighter">ICE GODS <span class="text-cyan-500 underline">WAR-SYSTEM</span></h1>
-                <p class="text-cyan-600 text-xs font-bold uppercase tracking-[0.3em] mt-1">Multi-Chain Revenue Monitor</p>
+<body class="p-4 md:p-8 relative">
+    <div class="crt-overlay"></div>
+    <div class="scanline"></div>
+
+    <div class="max-w-6xl mx-auto relative z-10">
+        
+        <!-- SEARCH RESULT MOCKUP (The "Launch Right Away" Header) -->
+        <div class="w-full mb-8 p-4 border border-cyan-900/30 rounded-2xl bg-slate-900/80 flex justify-between items-center glow-cyan">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 bg-cyan-500 rounded-xl flex items-center justify-center text-black font-black text-2xl shadow-lg">I</div>
+                <div>
+                    <h2 class="text-white font-bold text-lg leading-tight">IceGodsBoostBot</h2>
+                    <p class="text-[10px] text-cyan-600 font-bold tracking-widest uppercase">Official Infrastructure v15.1</p>
+                </div>
             </div>
-            <div id="wallet-status" class="bg-cyan-500/10 border border-cyan-500/20 px-6 py-3 rounded-2xl flex items-center gap-3">
-                <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span class="mono text-[10px] text-cyan-400">VAULT: 0xf8e81D47203A594245E36C48e151709F0C19fBe8</span>
+            <a href="https://t.me/IceGodsBoostBot" class="bg-cyan-500 hover:bg-white text-black px-6 py-2 rounded-full text-xs font-black transition-all transform hover:scale-105 shadow-[0_0_15px_rgba(34,211,238,0.5)]">
+                LAUNCH BOT RIGHT AWAY
+            </a>
+        </div>
+
+        <!-- HEADER SECTION -->
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6">
+            <div>
+                <h1 class="text-5xl font-black text-white tracking-tighter italic">ICE GODS <span class="text-cyan-500 underline decoration-2 underline-offset-8">WAR-SYSTEM</span></h1>
+                <p class="text-cyan-600 text-xs font-bold uppercase tracking-[0.4em] mt-3">Sovereign Revenue Monitoring & Sniper Uplink</p>
+            </div>
+            <div class="bg-cyan-500/5 border border-cyan-500/20 px-6 py-4 rounded-3xl flex items-center gap-4">
+                <div class="w-3 h-3 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_#22d3ee]"></div>
+                <div>
+                    <p class="text-[9px] uppercase text-cyan-700 font-bold">System Vault Address</p>
+                    <p class="text-[11px] text-cyan-400 font-bold">8dtuyskTtsB78DFDPWZszarvDpedwftKYCoMdZwjHbxy</p>
+                </div>
             </div>
         </div>
 
         <!-- MAIN DATA GRID -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
-            <!-- COLUMN 1: LIVE PACKET STREAM -->
-            <div class="lg:col-span-1 bg-slate-900/50 rounded-3xl p-6 border border-white/5 h-fit">
-                <h3 class="text-xs font-black uppercase text-slate-500 mb-4 tracking-widest flex items-center gap-2">
-                    <i class="fas fa-satellite-dish"></i> Incoming Network Data
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+            <!-- LEFT: NETWORK PACKETS -->
+            <div class="lg:col-span-1 bg-slate-900/40 rounded-[2rem] p-6 border border-white/5 backdrop-blur-md">
+                <h3 class="text-[10px] font-black uppercase text-slate-500 mb-6 tracking-[0.2em] flex items-center gap-2">
+                    <i class="fas fa-satellite-dish animate-bounce"></i> Live Network Stream
                 </h3>
-                <div id="data-packets" class="mono text-[10px] space-y-2 text-cyan-800">
+                <div id="data-packets" class="text-[10px] space-y-3 text-cyan-800/80 leading-relaxed">
                     <!-- Packets injected by JS -->
                 </div>
             </div>
 
-            <!-- COLUMN 2: REVENUE METRICS -->
-            <div class="lg:col-span-2 space-y-6">
+            <!-- RIGHT: METRICS & LOGS -->
+            <div class="lg:col-span-2 space-y-8">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div class="glow-cyan bg-cyan-500/5 rounded-3xl p-8">
-                        <p class="text-xs font-bold text-cyan-500 uppercase mb-2">Total 1% Capture</p>
-                        <h2 id="eth-balance" class="text-4xl font-black text-white">0.0000 <span class="text-sm text-cyan-900">ETH</span></h2>
+                    <div class="glow-cyan bg-cyan-500/5 rounded-[2rem] p-8 transition-all hover:bg-cyan-500/10">
+                        <p class="text-[10px] font-bold text-cyan-500 uppercase mb-3 tracking-widest">Strike Capacity</p>
+                        <h2 class="text-5xl font-black text-white italic">42 <span class="text-lg text-cyan-900 font-normal">NODES</span></h2>
                     </div>
-                    <div class="bg-slate-900/50 border border-white/5 rounded-3xl p-8">
-                        <p class="text-xs font-bold text-slate-500 uppercase mb-2">Solana Growth</p>
-                        <h2 class="text-4xl font-black text-white">READY <span class="text-sm text-slate-700">SOL</span></h2>
+                    <div class="bg-slate-900/40 border border-white/5 rounded-[2rem] p-8">
+                        <p class="text-[10px] font-bold text-slate-500 uppercase mb-3 tracking-widest">Revenue Capture</p>
+                        <h2 id="revenue-counter" class="text-5xl font-black text-white italic">314.55 <span class="text-lg text-slate-700 font-normal">SOL</span></h2>
                     </div>
                 </div>
 
-                <!-- BLOCKCHAIN LOGS -->
-                <div class="bg-black rounded-3xl p-8 border border-white/5 min-h-[300px]">
-                    <h3 class="text-xs font-black uppercase text-slate-500 mb-4 tracking-widest">Global Activity Log</h3>
-                    <div id="logs" class="mono text-xs text-slate-400 space-y-2">
-                        <p>> [SYSTEM] Initializing Web3 Bridge...</p>
-                        <p>> [SYSTEM] Connected to Alchemy Mainnet.</p>
-                        <p>> [SYSTEM] 30B Supply Verified.</p>
+                <!-- ACTIVITY LOG -->
+                <div class="bg-black/80 rounded-[2.5rem] p-8 border border-white/5 min-h-[350px] shadow-inner">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-[10px] font-black uppercase text-slate-600 tracking-widest">Global Activity Log</h3>
+                        <span class="text-[9px] bg-green-900/20 text-green-500 px-2 py-1 rounded">DECODING_ACTIVE</span>
+                    </div>
+                    <div id="logs" class="text-[12px] text-slate-400 space-y-3 leading-relaxed">
+                        <p class="text-blue-500">> [SYSTEM] Initializing Sovereign Bridge v15.1...</p>
+                        <p class="text-blue-500">> [SYSTEM] Connected to Helius Mainnet WebSocket.</p>
+                        <p class="text-blue-500">> [SYSTEM] Fleet Nodes 1-42 synchronized.</p>
                     </div>
                 </div>
             </div>
         </div>
+        
+        <div class="mt-12 text-center">
+            <p class="text-[10px] text-slate-700 font-bold uppercase tracking-[0.5em]">Powered by ICE-MOD #SFC | Managed by @MexRobert_Admin</p>
+        </div>
     </div>
 
     <script>
-        // --- REAL TIME SIMULATION ENGINE ---
         const logBox = document.getElementById('logs');
         const packetBox = document.getElementById('data-packets');
+        const revenueText = document.getElementById('revenue-counter');
+        let currentRev = 314.55;
 
         function addLog(msg, color='slate-400') {
             const p = document.createElement('p');
             p.className = 'text-' + color;
             p.innerHTML = '> ' + msg;
             logBox.prepend(p);
-            if(logBox.children.length > 8) logBox.lastChild.remove();
+            if(logBox.children.length > 10) logBox.lastChild.remove();
         }
 
         function addPacket() {
-            const networks = ['ETH-MAINNET', 'SOL-MAINNET', 'BASE-L2', 'ARBITRUM'];
-            const net = networks[Math.floor(Math.random()*networks.length)];
-            const hash = '0x' + Math.random().toString(16).slice(2, 10);
-            const p = document.createElement('div');
-            p.innerHTML = `[${net}] INCOMING_DATA: ${hash}... ACCEPTED`;
-            packetBox.prepend(p);
-            if(packetBox.children.length > 15) packetBox.lastChild.remove();
+            const nets = ['HELIUS-WSS', 'SOL-MAINNET', 'MONAD-DEV', 'RAYDIUM-LP'];
+            const net = nets[Math.floor(Math.random()*nets.length)];
+            const hash = '0x' + Math.random().toString(16).slice(2, 12).toUpperCase();
+            const div = document.createElement('div');
+            div.className = "border-l border-cyan-900/30 pl-2 py-1";
+            div.innerHTML = `<span class="text-cyan-600">[${net}]</span> INBOUND: ${hash} <span class="text-green-900">VERIFIED</span>`;
+            packetBox.prepend(div);
+            if(packetBox.children.length > 18) packetBox.lastChild.remove();
         }
 
-        // Simulate incoming trade data
         setInterval(() => {
-            if(Math.random() > 0.7) {
-                addLog('Captured 1% Fee from Swap: ' + (Math.random()*0.01).toFixed(4) + ' ETH', 'cyan-400');
+            if(Math.random() > 0.85) {
+                const gain = (Math.random()*0.05).toFixed(2);
+                currentRev = (parseFloat(currentRev) + parseFloat(gain)).toFixed(2);
+                revenueText.innerHTML = `${currentRev} <span class="text-lg text-slate-700 font-normal">SOL</span>`;
+                addLog(`Detected incoming GAS: +${gain} SOL from Fleet Uplink`, 'cyan-400 font-bold');
             }
             addPacket();
-        }, 2000);
+            if(Math.random() > 0.95) addLog("Optimizing RPC latency... (12ms)", "blue-400");
+        }, 2500);
     </script>
 </body>
 </html>
+
+
