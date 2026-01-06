@@ -1,22 +1,26 @@
-# ❄️ ICE GODS EMPIRE: MEX-WARSYSTEM
-
-## ⚡ MISSION OBJECTIVE
-The **MEX-WarSystem** is a cross-chain revenue engine designed to monitor the **30,000,000,000 $IBS** (Ice Boys) token supply. The system utilizes a 1% built-in smart contract fee to stream passive revenue directly to the Godhead wallet.
-
-## 🛠️ THE ARSENAL (Current)
-- **main.py**: Python-based Oracle tracking trades.
-- **Procfile**: Render deployment configuration.
-- **requirements.txt**: Python dependencies.
-
-## 🚀 DEPLOYMENT PROTOCOL
-1. **Environment**: Configure `.env` with Private Keys (Hidden from GitHub).
-2. **Engine**: Execute `python main.py` to bridge the bot to the blockchain.
-3. **Commands**: Interact with the Telegram bot using `/status`.
-
-## 🛰️ SYSTEM TOPOLOGY
-- **Ethereum Node**: Alchemy Mainnet
-- **Solana Node**: Helius Devnet
-- **Revenue Wallet**: `0x7D7A4820355E8597e089BEeB15cEa308cEf3eda3`
-
----
-**🛡️ SECURITY NOTICE:** *The `.env` file is strictly ignored by `.gitignore`. Never leak your MAKER_KEY.*
+❄️ MONOLITH V22: AUTONOMOUS SOVEREIGN
+​Professional-grade blockchain surveillance and node activation system. This ecosystem synchronizes a Telegram Bot (The Brain) with a high-end React Dashboard (The Face) using a real-time Firestore backbone.
+​⚙️ Core Infrastructure
+​Frontend: React + Tailwind + Lucide (Deployed on Vercel)
+​Backend: Python + Telebot + Firebase Admin (Deployed on Render)
+​Database: Google Firestore (NoSQL Real-time)
+​Network: Autonomous Blockchain Detection (SOL/ETH)
+​🚀 Deployment Instructions
+​Backend (Render)
+​Ensure requirements.txt contains firebase-admin.
+​Set Environment Variables:
+​BOT_TOKEN: Your Telegram bot token.
+​FIREBASE_SERVICE_ACCOUNT: The full JSON from Firebase Service Accounts.
+​__firebase_config: The Web SDK configuration JSON.
+​Frontend (Vercel)
+​Connect GitHub repository.
+​The App.jsx automatically consumes the Firebase credentials to reflect live node status.
+​🛠 Command Reference (Termux)
+​git add .
+​git commit -m "update message"
+​git push origin main
+​🛡 Security Protocol
+​Zero human intervention for payment verification.
+​AES-256-GCM encryption standards for data transit.
+​Autonomous whitelisting via Transaction Hash verification.
+​Developed under the Ice Gods Domain.
