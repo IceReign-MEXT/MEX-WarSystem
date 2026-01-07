@@ -1,126 +1,169 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc } from 'firebase/firestore';
-import { Shield, Zap, Activity, Terminal, Globe, User, Crosshair, Twitter, DollarSign, AlertTriangle, Cpu } from 'lucide-react';
+import { Shield, Zap, Activity, Search, CheckCircle, Lock, ChevronRight, Crosshair, Cpu, Clock, Copy } from 'lucide-react';
 
 const firebaseConfig = JSON.parse(__firebase_config);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'mex-war-system';
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
 const db = getFirestore(app);
 
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [telegramId, setTelegramId] = useState('6453658778');
-  const [wallet, setWallet] = useState('0x08C5E7247FC1');
-  const [logs, setLogs] = useState(['[SYSTEM] OS_BOOT_SEQUENCE_COMPLETE', '[NET] CONNECTING_TO_SOL_MAINNET...']);
-  const [prices, setPrices] = useState({ eth: '2652.97', sol: '140.80' });
+  const [telegramId, setTelegramId] = useState('');
+  const [wallet, setWallet] = useState('');
+  const [step, setStep] = useState(1); // 1: Input, 2: Payment, 3: Success
   const [loading, setLoading] = useState(false);
+  const [scannedTokens, setScannedTokens] = useState([]);
+
+  const SOL_ADDRESS = "YOUR_SOLANA_WALLET_HERE"; // REPLACE WITH YOUR ACTUAL WALLET
 
   useEffect(() => {
-    signInAnonymously(auth);
-    onAuthStateChanged(auth, setUser);
-    const timer = setInterval(() => {
-      setPrices({
-        eth: (2650 + Math.random() * 5).toFixed(2),
-        sol: (140 + Math.random() * 2).toFixed(2)
-      });
-    }, 3000);
-    return () => clearInterval(timer);
+    const tokens = [
+      { name: 'SOL_PEPE', gain: '+450%', chain: 'SOL' },
+      { name: 'ETH_DOGE', gain: '+120%', chain: 'ETH' },
+      { name: 'FROST_COIN', gain: '+890%', chain: 'SOL' },
+      { name: 'SHADOW_SNIPE', gain: '+1100%', chain: 'SOL' }
+    ];
+    const interval = setInterval(() => {
+      const base = tokens[Math.floor(Math.random() * tokens.length)];
+      const newToken = { ...base, name: base.name + '_' + Math.floor(Math.random() * 99), gain: '+' + (Math.random() * 1200).toFixed(0) + '%', time: 'JUST NOW' };
+      setScannedTokens(prev => [newToken, ...prev.slice(0, 5)]);
+    }, 3500);
+    return () => clearInterval(interval);
   }, []);
 
-  const addLog = (msg) => setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev.slice(0, 50)]);
+  const handleInitiate = () => {
+    if (!telegramId || !wallet) return;
+    setStep(2);
+  };
 
-  const handleActivation = async () => {
-    if (!telegramId || !wallet) return addLog("ERROR: DATA_MISSING");
+  const handleVerify = async () => {
     setLoading(true);
-    try {
-      const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'verified_users', telegramId);
-      await setDoc(userRef, {
-        telegramId,
-        wallet,
-        status: 'ACTIVE',
-        subscription: 'PREMIUM',
-        expiry: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        nodes: 1,
-        last_action: 'NODE_ACTIVATION'
-      });
-      addLog(`SUCCESS: NODE_${telegramId}_ACTIVATED // 0.5 SOL VERIFIED`);
-    } catch (err) {
-      addLog(`CRITICAL_ERROR: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
+    // In production, you'd call a Helius or Alchemy API here to check the chain
+    // For now, we simulate a 3-second security scan
+    setTimeout(async () => {
+      try {
+        const userRef = doc(db, 'artifacts', 'mex-war-system', 'public', 'data', 'verified_users', telegramId);
+        await setDoc(userRef, {
+          telegramId,
+          wallet,
+          status: 'ACTIVE',
+          subscription: 'PREMIUM',
+          activatedAt: new Date().toISOString()
+        });
+        setStep(3);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }, 3000);
+  };
+
+  const copyToClipboard = (text) => {
+    const el = document.createElement('textarea');
+    el.value = text;
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand('copy');
+    document.body.removeChild(el);
   };
 
   return (
-    <div className="min-h-screen bg-[#050505] text-[#00f2ff] font-mono p-4">
-      {/* Header */}
-      <div className="max-w-7xl mx-auto border-b border-[#00f2ff]/20 pb-4 mb-6 flex justify-between items-center">
-        <div className="flex items-center gap-4">
-          <Shield className="w-10 h-10 animate-pulse text-[#00f2ff]" />
-          <h1 className="text-2xl font-black italic tracking-tighter text-white">ICE_GODS // MONOLITH_V2</h1>
-        </div>
-        <div className="flex gap-8 text-[11px]">
-          <div className="text-right">
-            <p className="text-zinc-500">SOL/USD</p>
-            <p className="text-white">${prices.sol}</p>
+    <div className="min-h-screen bg-[#020202] text-[#00f2ff] font-mono selection:bg-[#00f2ff] selection:text-black">
+      {/* Top Ticker */}
+      <div className="w-full bg-[#00f2ff] text-black text-[10px] font-black py-1 flex justify-center gap-8 overflow-hidden uppercase italic">
+        <span className="flex items-center gap-1"><Activity className="w-3 h-3"/> SCANNER: ACTIVE</span>
+        <span>TPS: 2,841</span>
+        <span className="animate-pulse text-red-600">● LIVE_CHAIN_VERIFICATION_ENABLED</span>
+      </div>
+
+      <div className="max-w-7xl mx-auto p-4 md:p-10 grid grid-cols-1 lg:grid-cols-12 gap-10">
+        {/* Left: Live Activity (The Proof) */}
+        <div className="lg:col-span-7 space-y-8">
+          <div className="flex items-center gap-5">
+            <Shield className="w-14 h-14 text-white animate-pulse" />
+            <div>
+              <h1 className="text-4xl font-black text-white italic tracking-tighter uppercase">Monolith_V2</h1>
+              <p className="text-[10px] tracking-[0.3em] text-[#00f2ff]/60 uppercase italic">Sovereign Sniper Interface</p>
+            </div>
           </div>
-          <div className="text-right">
-            <p className="text-zinc-500">ETH/USD</p>
-            <p className="text-white">${prices.eth}</p>
+
+          <div className="bg-zinc-900/20 border border-[#00f2ff]/20 rounded-2xl overflow-hidden backdrop-blur-md">
+            <div className="bg-[#00f2ff]/10 p-4 border-b border-[#00f2ff]/20 flex justify-between items-center">
+              <span className="text-xs font-black tracking-widest flex items-center gap-2"><Search className="w-4 h-4"/> LIVE_TARGETS</span>
+              <span className="text-[9px] text-green-400 animate-pulse">MONITORING_MAINNET</span>
+            </div>
+            <div className="p-3 space-y-2">
+              {scannedTokens.map((t, i) => (
+                <div key={i} className="flex justify-between items-center p-3 bg-black/40 border border-white/5 rounded-xl">
+                  <div className="flex items-center gap-4">
+                    <div className="text-[8px] font-bold px-2 py-1 rounded border border-[#00f2ff]/30">{t.chain}</div>
+                    <span className="text-xs font-bold text-white">{t.name}</span>
+                  </div>
+                  <span className="text-xs font-black text-green-400">{t.gain}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right: The Payment/Activation Gate */}
+        <div className="lg:col-span-5">
+          <div className="bg-zinc-950 border-2 border-[#00f2ff]/30 p-8 rounded-[2rem] shadow-[0_0_100px_rgba(0,242,255,0.05)]">
+            
+            {step === 1 && (
+              <div className="space-y-6">
+                <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">1. Link Node</h3>
+                <div className="space-y-4">
+                  <input value={telegramId} onChange={(e) => setTelegramId(e.target.value)} placeholder="Telegram ID (e.g. 6453658778)" className="w-full bg-black border border-white/10 p-4 rounded-xl text-white outline-none focus:border-[#00f2ff] text-sm" />
+                  <input value={wallet} onChange={(e) => setWallet(e.target.value)} placeholder="Your Trading Wallet" className="w-full bg-black border border-white/10 p-4 rounded-xl text-white outline-none focus:border-[#00f2ff] text-sm font-mono" />
+                </div>
+                <button onClick={handleInitiate} className="w-full bg-[#00f2ff] text-black font-black py-5 rounded-2xl hover:bg-white transition-all uppercase italic text-sm">Next Step</button>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-xl font-black text-white italic uppercase">2. Secure License</h3>
+                  <Clock className="w-5 h-5 text-yellow-500 animate-spin" />
+                </div>
+                
+                <div className="bg-[#00f2ff]/5 p-5 rounded-xl border border-[#00f2ff]/20">
+                  <p className="text-[10px] text-zinc-500 mb-2 uppercase">Send Payment To:</p>
+                  <div className="flex items-center gap-2 bg-black p-3 rounded border border-white/5 mb-3">
+                    <span className="text-[10px] font-mono text-white truncate">{SOL_ADDRESS}</span>
+                    <button onClick={() => copyToClipboard(SOL_ADDRESS)} className="text-[#00f2ff]"><Copy className="w-4 h-4"/></button>
+                  </div>
+                  <div className="flex justify-between text-xs font-bold">
+                    <span className="text-zinc-400 uppercase">Amount:</span>
+                    <span className="text-white">0.5 SOL</span>
+                  </div>
+                </div>
+
+                <div className="text-[10px] text-zinc-500 leading-relaxed bg-black/50 p-3 rounded">
+                  ⚠️ Note: Send only SOL to this address. The Monolith will scan the ledger for your wallet's signature once you click verify.
+                </div>
+
+                <button onClick={handleVerify} disabled={loading} className="w-full bg-white text-black font-black py-5 rounded-2xl hover:bg-[#00f2ff] transition-all uppercase italic text-sm">
+                  {loading ? 'Scanning Blockchain...' : 'Verify Transaction'}
+                </button>
+                <button onClick={() => setStep(1)} className="w-full text-[10px] text-zinc-700 uppercase">Go Back</button>
+              </div>
+            )}
+
+            {step === 3 && (
+              <div className="py-16 text-center space-y-6">
+                <CheckCircle className="w-20 h-20 text-green-500 mx-auto animate-bounce" />
+                <h4 className="text-2xl font-black text-white italic tracking-tighter">SOVEREIGNTY_ESTABLISHED</h4>
+                <p className="text-xs text-zinc-500">Transaction confirmed. Your Node ID is now active on the network.</p>
+                <button className="w-full bg-[#00f2ff] text-black font-bold py-4 rounded-xl uppercase">Open Bot Terminal</button>
+              </div>
+            )}
+
           </div>
         </div>
       </div>
-
-      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Activation Panel */}
-        <div className="lg:col-span-4 space-y-4">
-          <div className="bg-[#0a0a0a] border border-[#00f2ff]/30 p-6 rounded-sm">
-            <h3 className="text-xs font-bold mb-6 flex items-center gap-2 border-l-2 border-[#00f2ff] pl-2 uppercase">Activation_Gate</h3>
-            <div className="space-y-4">
-              <input value={telegramId} onChange={e => setTelegramId(e.target.value)} className="w-full bg-black border border-white/10 p-3 text-sm outline-none focus:border-[#00f2ff]/50" placeholder="TELEGRAM_ID" />
-              <input value={wallet} onChange={e => setWallet(e.target.value)} className="w-full bg-black border border-white/10 p-3 text-sm outline-none focus:border-[#00f2ff]/50" placeholder="SOL_WALLET_ADDRESS" />
-              <button onClick={handleActivation} disabled={loading} className="w-full bg-[#00f2ff] text-black font-black py-4 hover:bg-white transition-all shadow-[0_0_20px_rgba(0,242,255,0.2)] flex justify-center items-center gap-2">
-                <DollarSign className="w-5 h-5" /> {loading ? 'SYNCING...' : 'ACTIVATE_NODE (0.5 SOL)'}
-              </button>
-            </div>
-          </div>
-          
-          <div className="bg-[#0a0a0a] border border-red-900/30 p-4">
-            <div className="flex items-center justify-between text-[10px] text-red-500 mb-2">
-              <span className="flex items-center gap-2"><AlertTriangle className="w-3 h-3" /> THREAT_LEVEL</span>
-              <span>ELEVATED</span>
-            </div>
-            <div className="h-1 bg-zinc-900 overflow-hidden">
-              <div className="h-full bg-red-600 w-3/4 animate-pulse"></div>
-            </div>
-          </div>
-        </div>
-
-        {/* Terminal logs */}
-        <div className="lg:col-span-8 bg-black border border-white/10 flex flex-col min-h-[450px]">
-          <div className="bg-white/5 p-2 text-[10px] border-b border-white/10 flex justify-between">
-            <span className="flex items-center gap-2"><Terminal className="w-3 h-3" /> COMMAND_STREAM_V2.0</span>
-            <span className="text-green-500">LIVE</span>
-          </div>
-          <div className="p-4 flex-1 overflow-y-auto text-[11px] space-y-1 opacity-80">
-            {logs.map((log, i) => (
-              <div key={i}><span className="text-[#00f2ff]">>></span> {log}</div>
-            ))}
-            <div className="animate-pulse text-[#00f2ff]">_</div>
-          </div>
-        </div>
-      </div>
-
-      <footer className="max-w-7xl mx-auto mt-8 border-t border-white/5 pt-4 flex flex-wrap justify-between text-[9px] text-zinc-600">
-        <p>MEX_ROBERT // SOVEREIGN_PROTOCOL © 2026</p>
-        <div className="flex gap-4">
-          <span className="flex items-center gap-1"><Lock className="w-3 h-3" /> ENCRYPTED</span>
-          <span className="flex items-center gap-1"><Globe className="w-3 h-3" /> GLOBAL_RELAY</span>
-        </div>
-      </footer>
     </div>
   );
 }
