@@ -1,251 +1,206 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { Shield, Zap, Terminal, Activity, Cpu, Globe, Database, Lock, Wallet, Target, Fingerprint, ChevronRight, BarChart3, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
+import { Shield, Zap, Activity, Cpu, Lock, Terminal, Globe, User, Crosshair, Twitter, DollarSign, AlertTriangle } from 'lucide-react';
 
-// FIREBASE CONFIG
-const firebaseConfig = {
-  apiKey: "AIzaSyCtumV0EsVXT1UlS0_4nktx8HI_Ph3ItkI",
-  authDomain: "hopeful-buckeye-459915-q6.firebaseapp.com",
-  projectId: "hopeful-buckeye-459915-q6",
-  storageBucket: "hopeful-buckeye-459915-q6.firebasestorage.app",
-  messagingSenderId: "965780897651",
-  appId: "1:965780897651:web:adb82ac04219bbb4584f06"
-};
-
+const firebaseConfig = JSON.parse(__firebase_config);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'mex-war-system';
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = "mex-war-system";
-
-const VAULT_SOL = "8dtuyskTtsB78DFDPWZszarvDpedwftKYCoMdZwjHbxy";
-const VAULT_ETH = "0xf34c00B763f48dE4dB654E0f78cc746b9BdE888F";
 
 export default function App() {
   const [user, setUser] = useState(null);
-  const [walletAddress, setWalletAddress] = useState(null);
-  const [tgId, setTgId] = useState("6453658778"); // Defaulting to your ID
-  const [isVerified, setIsVerified] = useState(false);
-  const [logs, setLogs] = useState([]);
-  const [ethPrice, setEthPrice] = useState(2642.88);
-  const [solPrice, setSolPrice] = useState(142.15);
-  const [activeTab, setActiveTab] = useState('TERMINAL');
+  const [telegramId, setTelegramId] = useState('');
+  const [wallet, setWallet] = useState('');
+  const [status, setStatus] = useState('UNAUTHORIZED');
+  const [logs, setLogs] = useState(['[SYSTEM] OS_BOOT_SEQUENCE_COMPLETE', '[NET] CONNECTING_TO_SOL_MAINNET...']);
+  const [prices, setPrices] = useState({ eth: '2652.97', sol: '140.80' });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    signInAnonymously(auth);
-    onAuthStateChanged(auth, (u) => {
-      setUser(u);
-    });
-
-    // Listen for activations globally to show in terminal
-    const q = collection(db, 'artifacts', appId, 'public', 'data', 'verified_users');
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const isUserFound = snapshot.docs.some(doc => doc.id === tgId);
-      setIsVerified(isUserFound);
-
-      const newLogs = snapshot.docs.map(doc => ({
-        id: doc.id,
-        text: `NODE_${doc.id.substring(0,6).toUpperCase()}_ACTIVATED`,
-        time: new Date().toLocaleTimeString()
-      }));
-      setLogs(newLogs.slice(-10).reverse());
-    });
-
-    const timer = setInterval(() => {
-      setEthPrice(p => p + (Math.random() - 0.5) * 5);
-      setSolPrice(p => p + (Math.random() - 0.5) * 2);
-    }, 3000);
-    
-    return () => {
-        clearInterval(timer);
-        unsubscribe();
+    const initAuth = async () => {
+      await signInAnonymously(auth);
     };
-  }, [tgId]);
+    initAuth();
+    onAuthStateChanged(auth, setUser);
+    
+    const timer = setInterval(() => {
+      setPrices({
+        eth: (2650 + Math.random() * 5).toFixed(2),
+        sol: (140 + Math.random() * 2).toFixed(2)
+      });
+    }, 3000);
+    return () => clearInterval(timer);
+  }, []);
 
-  const connectWallet = async () => {
-    setLoading(true);
-    setTimeout(() => {
-      setWalletAddress("0x" + Math.random().toString(16).slice(2, 10).toUpperCase() + "...7FC1");
-      setLoading(false);
-    }, 8000);
-  };
+  const addLog = (msg) => setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev.slice(0, 50)]);
 
-  const processPayment = async () => {
-    if (!tgId) return;
+  const handleSubscription = async () => {
+    if (!telegramId || !wallet) {
+      addLog("ERROR: MISSING_OPERATOR_CREDENTIALS");
+      return;
+    }
     setLoading(true);
-    // CRITICAL: We save the doc using the Telegram ID as the ID
     try {
-        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'verified_users', tgId), {
-            wallet: walletAddress || "LOCAL_NODE",
-            timestamp: new Date().toISOString(),
-            status: 'ACTIVE',
-            type: 'SOVEREIGN_NODE'
-        });
-        setLoading(false);
-    } catch (error) {
-        console.error("Activation failed", error);
-        setLoading(false);
+      const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'verified_users', telegramId);
+      await setDoc(userRef, {
+        telegramId,
+        wallet,
+        status: 'ACTIVE',
+        subscription: 'PREMIUM',
+        expiry: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        nodes: Math.floor(Math.random() * 5) + 1,
+        last_action: 'NODE_ACTIVATION'
+      });
+      setStatus('ACTIVE');
+      addLog(`SUCCESS: NODE_${telegramId}_ACTIVATED // SUBSCRIPTION_VERIFIED`);
+    } catch (err) {
+      addLog(`CRITICAL_ERROR: ${err.message}`);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#020202] text-[#efefef] font-mono p-2 md:p-6 overflow-x-hidden">
-      <div className="fixed inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 pointer-events-none" />
-      
-      <div className="max-w-[1800px] mx-auto relative z-10">
-        {/* STATS BAR */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-zinc-800 border border-zinc-800 mb-6 rounded-lg overflow-hidden">
-          <div className="bg-black p-4 flex justify-between items-center">
-             <span className="text-[10px] text-zinc-500 font-bold uppercase">ETH/USD</span>
-             <span className="text-sm font-black italic">${ethPrice.toFixed(2)}</span>
+    <div className="min-h-screen bg-[#050505] text-[#00f2ff] font-mono p-2 md:p-6 overflow-x-hidden">
+      {/* Top Bar */}
+      <div className="max-w-7xl mx-auto flex flex-wrap justify-between items-center border-b border-[#00f2ff]/20 pb-4 mb-6">
+        <div className="flex items-center gap-4">
+          <div className="relative">
+            <Shield className="w-10 h-10 text-[#00f2ff] animate-pulse" />
+            <div className="absolute inset-0 bg-[#00f2ff]/20 blur-xl rounded-full"></div>
           </div>
-          <div className="bg-black p-4 flex justify-between items-center">
-             <span className="text-[10px] text-zinc-500 font-bold uppercase">SOL/USD</span>
-             <span className="text-sm font-black italic">${solPrice.toFixed(2)}</span>
-          </div>
-          <div className="bg-black p-4 flex justify-between items-center text-cyan-500">
-             <span className="text-[10px] font-bold uppercase">SYNC_STATUS</span>
-             <span className="text-xs font-black animate-pulse">ENCRYPTED</span>
-          </div>
-          <div className="bg-black p-4 flex justify-between items-center">
-             <span className="text-[10px] text-zinc-500 font-bold uppercase">VERIFIED_NODES</span>
-             <span className="text-xs font-black">{logs.length}</span>
-          </div>
-        </div>
-
-        {/* HEADER */}
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-12 gap-6">
           <div>
-            <div className="flex items-center gap-4 mb-2">
-              <div className="w-12 h-12 bg-white flex items-center justify-center text-black rounded-lg">
-                <Shield size={32} />
-              </div>
-              <h1 className="text-5xl md:text-7xl font-black italic tracking-tighter uppercase">ICE_GODS</h1>
-            </div>
-            <p className="text-[10px] text-zinc-600 tracking-[0.4em] font-bold">MONOLITH_OS_V2_ACTIVE</p>
+            <h1 className="text-2xl font-black tracking-tighter italic">ICE_GODS // MONOLITH_V2</h1>
+            <p className="text-[10px] text-cyan-700 tracking-[0.3em]">SOVEREIGN_COMMAND_AND_CONTROL</p>
           </div>
-
-          <div className="flex flex-col items-end gap-3">
-             <div className="bg-zinc-900 border border-white/10 p-2 px-4 rounded-full flex items-center gap-4">
-                <span className="text-[10px] text-zinc-500 font-bold uppercase">TG_SYNC:</span>
-                <input 
-                    className="bg-transparent border-none outline-none text-[10px] font-black text-cyan-500 w-24"
-                    value={tgId}
-                    onChange={(e) => setTgId(e.target.value)}
-                    placeholder="ENTER_TG_ID"
-                />
-             </div>
-             <button onClick={connectWallet} className="px-6 py-2 border border-white/10 rounded-full text-[10px] font-black uppercase hover:bg-white hover:text-black transition-all">
-                {loading ? "CONNECTING..." : walletAddress ? walletAddress : "CONNECT_WALLET"}
-             </button>
+        </div>
+        <div className="flex gap-8">
+          <div className="text-right">
+            <p className="text-[10px] text-zinc-500 uppercase">Solana_Mainnet</p>
+            <p className="text-white font-bold">${prices.sol} <span className="text-green-500 text-[10px]">+2.4%</span></p>
           </div>
-        </header>
+          <div className="text-right">
+            <p className="text-[10px] text-zinc-500 uppercase">Ethereum_Network</p>
+            <p className="text-white font-bold">${prices.eth} <span className="text-red-500 text-[10px]">-0.8%</span></p>
+          </div>
+        </div>
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* NAV */}
-          <div className="lg:col-span-3 space-y-4">
-            <div className="bg-zinc-900/40 border border-white/5 p-6 rounded-3xl">
-              <p className="text-[10px] font-black text-zinc-600 mb-6 uppercase tracking-widest">System_Control</p>
-              {['TERMINAL', 'STRIKE', 'SNIPERS', 'RAID'].map(tab => (
-                <button key={tab} onClick={() => setActiveTab(tab)} className={`w-full text-left p-4 rounded-xl text-xs font-black mb-2 transition-all ${activeTab === tab ? 'bg-white text-black translate-x-2' : 'text-zinc-500 hover:text-zinc-200'}`}>
-                  /{tab}
-                </button>
-              ))}
-            </div>
+      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left Control Panel */}
+        <div className="lg:col-span-4 space-y-6">
+          <div className="bg-[#0a0a0a] border border-[#00f2ff]/30 p-6 rounded-sm shadow-[0_0_20px_rgba(0,242,255,0.05)]">
+            <h3 className="flex items-center gap-2 text-sm font-bold mb-6 border-l-2 border-[#00f2ff] pl-2">
+              <User className="w-4 h-4" /> OPERATOR_INITIALIZATION
+            </h3>
             
-            <div className="bg-white text-black p-8 rounded-3xl">
-                <p className="text-[10px] font-black uppercase mb-4">Activation_Protocol</p>
-                <div className="text-4xl font-black italic mb-6">0.5 <span className="text-lg opacity-50">SOL</span></div>
-                <button onClick={processPayment} disabled={isVerified} className="w-full bg-black text-white py-4 rounded-xl font-black text-xs uppercase hover:bg-cyan-600 transition-all">
-                    {isVerified ? "NODE_OPERATIONAL" : "INITIALIZE_STRIKE"}
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] text-zinc-500 mb-1 block">TELEGRAM_ID</label>
+                <input 
+                  value={telegramId}
+                  onChange={(e) => setTelegramId(e.target.value)}
+                  className="w-full bg-black border border-white/10 p-3 text-sm focus:border-[#00f2ff]/50 outline-none transition-all"
+                  placeholder="e.g. 6453658778"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-zinc-500 mb-1 block">SOL_WALLET_ADDRESS</label>
+                <input 
+                  value={wallet}
+                  onChange={(e) => setWallet(e.target.value)}
+                  className="w-full bg-black border border-white/10 p-3 text-sm focus:border-[#00f2ff]/50 outline-none transition-all"
+                  placeholder="0x... or Solana Address"
+                />
+              </div>
+
+              <div className="pt-4">
+                <button 
+                  onClick={handleSubscription}
+                  disabled={loading}
+                  className="w-full bg-[#00f2ff] text-black font-black py-4 flex items-center justify-center gap-2 hover:bg-white transition-all active:scale-95 shadow-[0_0_30px_rgba(0,242,255,0.2)]"
+                >
+                  <DollarSign className="w-5 h-5" />
+                  {loading ? 'PROCESSING_PAYMENT...' : 'ACTIVATE_NODE (0.5 SOL)'}
                 </button>
+                <p className="text-[9px] text-zinc-600 mt-2 text-center uppercase tracking-widest">Lifetime Access // encrypted bridge</p>
+              </div>
             </div>
           </div>
 
-          {/* MAIN */}
-          <div className="lg:col-span-6 bg-black border border-zinc-800 rounded-[2.5rem] p-8 md:p-12 relative min-h-[500px]">
-             {activeTab === 'TERMINAL' ? (
-                <div>
-                   <h2 className="text-3xl font-black italic mb-8 uppercase flex items-center gap-4">
-                     <Terminal className="text-cyan-500" /> Nexus_Surveillance
-                   </h2>
-                   <div className="space-y-4">
-                      {logs.map((log, i) => (
-                        <div key={i} className="flex items-center gap-4 text-[10px] font-bold text-zinc-500">
-                           <span className="text-zinc-800">[{log.time}]</span>
-                           <span className="text-cyan-600">>></span>
-                           <span className="uppercase tracking-widest">{log.text}</span>
-                        </div>
-                      ))}
-                      <div className="text-[10px] text-cyan-500 animate-pulse mt-10">_AWAITING_NEW_SIGNATURES...</div>
-                   </div>
-                </div>
-             ) : (
-                <div className="h-full flex flex-col items-center justify-center text-center py-20">
-                    {!isVerified ? (
-                        <>
-                            <Lock size={48} className="text-zinc-800 mb-6" />
-                            <h3 className="text-2xl font-black italic mb-2 uppercase">Protocol_Locked</h3>
-                            <p className="text-[10px] text-zinc-500 uppercase tracking-widest">Node {tgId} requires activation.</p>
-                        </>
-                    ) : (
-                        <div className="animate-in zoom-in duration-500">
-                            <Zap size={64} className="text-cyan-500 mb-6 mx-auto animate-bounce" />
-                            <h3 className="text-4xl font-black italic text-cyan-500 uppercase mb-2">{activeTab}_ENABLED</h3>
-                            <p className="text-[10px] text-zinc-400 uppercase tracking-widest">Bot ID {tgId} synchronized with monolith.</p>
-                        </div>
-                    )}
-                </div>
-             )}
-          </div>
-
-          {/* ASSETS */}
-          <div className="lg:col-span-3 space-y-6">
-             <div className="bg-zinc-900/20 border border-white/5 p-6 rounded-3xl">
-                <p className="text-[10px] font-black text-zinc-600 mb-6 uppercase tracking-widest">Identity_Log</p>
-                <div className="space-y-4">
-                   <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-zinc-800 rounded flex items-center justify-center text-zinc-500"><Cpu size={14}/></div>
-                      <div>
-                         <p className="text-[8px] text-zinc-600 uppercase">Operator_ID</p>
-                         <p className="text-[10px] font-black truncate">{tgId}</p>
-                      </div>
-                   </div>
-                   <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-zinc-800 rounded flex items-center justify-center text-zinc-500"><Globe size={14}/></div>
-                      <div>
-                         <p className="text-[8px] text-zinc-600 uppercase">Region</p>
-                         <p className="text-[10px] font-black">LAG_NODE_01</p>
-                      </div>
-                   </div>
-                </div>
-             </div>
-
-             <div className="bg-cyan-500 p-8 rounded-3xl text-black">
-                <p className="text-[10px] font-black uppercase mb-6 opacity-60">Vault_Addresses</p>
-                <div className="space-y-4">
-                    <div>
-                        <p className="text-[8px] font-black uppercase mb-1">SOL_TARGET</p>
-                        <p className="text-[9px] font-bold truncate">{VAULT_SOL}</p>
-                    </div>
-                    <div>
-                        <p className="text-[8px] font-black uppercase mb-1">ETH_TARGET</p>
-                        <p className="text-[9px] font-bold truncate">{VAULT_ETH}</p>
-                    </div>
-                </div>
-             </div>
+          <div className="bg-[#0a0a0a] border border-red-900/30 p-4 rounded-sm">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-xs font-bold text-red-500 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4" /> THREAT_LEVEL
+              </span>
+              <span className="text-[10px] bg-red-500/10 px-2 py-1 text-red-500">ELEVATED</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-[10px]">
+              <div className="bg-black p-2 border border-white/5">
+                <p className="text-zinc-500">SYNC</p>
+                <p className="text-white">ENCRYPTED</p>
+              </div>
+              <div className="bg-black p-2 border border-white/5">
+                <p className="text-zinc-500">NODES</p>
+                <p className="text-white">12,401 ACTIVE</p>
+              </div>
+            </div>
           </div>
         </div>
 
-        <footer className="mt-20 border-t border-white/5 pt-10 pb-10 flex flex-col md:flex-row justify-between items-center gap-6 opacity-20">
-            <div className="flex items-center gap-6 text-[8px] font-black uppercase tracking-[0.4em]">
-                <Fingerprint size={12}/> IDENTITY_SECURED
-                <Database size={12}/> FIRESTORE_LIVE
+        {/* Center Terminal */}
+        <div className="lg:col-span-5 flex flex-col gap-6">
+          <div className="bg-[#050505] border border-[#00f2ff]/20 rounded-sm flex-1 flex flex-col min-h-[500px]">
+            <div className="bg-[#00f2ff]/10 p-3 border-b border-[#00f2ff]/20 flex justify-between items-center">
+              <span className="text-xs font-bold flex items-center gap-2 italic">
+                <Terminal className="w-4 h-4" /> COMMAND_STREAM_V2.0
+              </span>
+              <div className="flex gap-1">
+                <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
+                <div className="w-2 h-2 rounded-full bg-green-500"></div>
+              </div>
             </div>
-            <p className="text-[8px] font-black uppercase tracking-[0.2em]">Mex Robert © 2026 // Sovereign Protocol</p>
-        </footer>
+            <div className="p-4 flex-1 overflow-y-auto font-mono text-[11px] space-y-1">
+              {logs.map((log, i) => (
+                <div key={i} className={`p-1 ${log.includes('SUCCESS') ? 'bg-green-500/5 text-green-400' : log.includes('ERROR') ? 'bg-red-500/5 text-red-500' : ''}`}>
+                  <span className="opacity-40">{`>>`}</span> {log}
+                </div>
+              ))}
+              <div className="animate-pulse text-[#00f2ff]">_</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Action Panel */}
+        <div className="lg:col-span-3 space-y-6">
+          <div className="bg-[#0a0a0a] border border-white/10 p-4 rounded-sm">
+            <h3 className="text-[10px] font-bold text-zinc-500 mb-4 tracking-widest uppercase">Quick_Strike_Assets</h3>
+            <div className="space-y-2">
+              <button className="w-full bg-zinc-900 border border-white/5 p-3 text-xs flex justify-between hover:border-[#00f2ff] transition-all">
+                <span className="flex items-center gap-2"><Crosshair className="w-4 h-4"/> SNIPER_BOT</span>
+                <span className="text-green-500">ONLINE</span>
+              </button>
+              <button className="w-full bg-zinc-900 border border-white/5 p-3 text-xs flex justify-between hover:border-[#00f2ff] transition-all">
+                <span className="flex items-center gap-2"><Twitter className="w-4 h-4"/> X_RAIDER</span>
+                <span className="text-green-500">READY</span>
+              </button>
+              <button className="w-full bg-zinc-900 border border-white/5 p-3 text-xs flex justify-between hover:border-[#00f2ff] transition-all">
+                <span className="flex items-center gap-2"><Zap className="w-4 h-4"/> FLASH_LOAN</span>
+                <span className="text-red-500">LOCKED</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="p-6 border-2 border-dashed border-[#00f2ff]/10 flex flex-col items-center justify-center text-center">
+            <Cpu className="w-12 h-12 mb-4 opacity-20" />
+            <p className="text-[10px] text-zinc-600">WAITING_FOR_MARKETING_PUSH</p>
+            <p className="text-[9px] text-zinc-800 mt-1 italic">"Zero marketing, pure tech."</p>
+          </div>
+        </div>
       </div>
     </div>
   );

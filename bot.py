@@ -8,87 +8,88 @@ from flask import Flask
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# --- FIREBASE INITIALIZATION ---
+# --- FIREBASE SETUP ---
 db = None
 try:
     if not firebase_admin._apps:
         service_account_info = os.environ.get("FIREBASE_SERVICE_ACCOUNT")
         if service_account_info:
-            try:
-                cleaned_info = service_account_info.strip()
-                if (cleaned_info.startswith("'") and cleaned_info.endswith("'")) or \
-                   (cleaned_info.startswith('"') and cleaned_info.endswith('"')):
-                    cleaned_info = cleaned_info[1:-1]
-
-                info = json.loads(cleaned_info)
-                if "private_key" in info:
-                    info["private_key"] = info["private_key"].replace("\\n", "\n")
-
-                cred = credentials.Certificate(info)
-                firebase_admin.initialize_app(cred)
-                db = firestore.client()
-                print("✅ Firebase initialized successfully.")
-            except Exception as json_err:
-                print(f"❌ JSON Parsing Error: {json_err}")
+            cleaned_info = service_account_info.strip()
+            if cleaned_info.startswith(("'", '"')): cleaned_info = cleaned_info[1:-1]
+            info = json.loads(cleaned_info)
+            if "private_key" in info: info["private_key"] = info["private_key"].replace("\\n", "\n")
+            cred = credentials.Certificate(info)
+            firebase_admin.initialize_app(cred)
+            db = firestore.client()
+            print("✅ MONOLITH_DB_CONNECTED")
 except Exception as e:
-    print(f"❌ Firebase Critical Error: {e}")
+    print(f"❌ DB_CRITICAL: {e}")
 
 # --- BOT CONFIG ---
 TOKEN = os.environ.get("BOT_TOKEN")
 APP_ID = os.environ.get("__app_id", "mex-war-system")
-bot = telebot.TeleBot(TOKEN, threaded=False) # Disable threading to prevent race conditions
+bot = telebot.TeleBot(TOKEN, threaded=False)
 
-# --- HEALTH SERVER ---
-app = Flask(__name__)
-@app.route('/health')
-def health(): return {"status": "online", "db_connected": db is not None}, 200
-
-def run_health_server():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+# --- UTILS ---
+def check_auth(user_id):
+    if not db: return False
+    try:
+        doc = db.collection('artifacts').document(APP_ID).collection('public').document('data').collection('verified_users').document(str(user_id)).get()
+        return doc.to_dict() if doc.exists else False
+    except: return False
 
 # --- COMMANDS ---
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, "❄️ ICE_GODS // MONOLITH_OS\nStatus: ONLINE\n\nUse /strike to check node activation.")
+    bot.reply_to(message, "❄️ ICE_GODS // MONOLITH_V2\nStatus: ONLINE\n\nCommands:\n/strike - Verify Node\n/snipe - Target Token\n/raid - Social Ops\n/status - System Health")
 
-@bot.message_handler(commands=['strike'])
-def handle_strike(message):
-    if db is None:
-        bot.send_message(message.chat.id, "❌ SYSTEM_OFFLINE: Database not connected.")
+@bot.message_handler(commands=['strike', 'status'])
+def strike(message):
+    auth_data = check_auth(message.from_user.id)
+    if auth_data:
+        msg = (
+            f"🎯 NODE_ACTIVE: {message.from_user.id}\n"
+            f"SUB: {auth_data.get('subscription')}\n"
+            f"WALLET: {auth_data.get('wallet')[:10]}...\n"
+            "SYSTEM: OPTIMAL"
+        )
+        bot.send_message(message.chat.id, msg)
+    else:
+        bot.send_message(message.chat.id, "❌ UNAUTHORIZED: Activate your node via the Dashboard first.")
+
+@bot.message_handler(commands=['snipe'])
+def snipe(message):
+    auth_data = check_auth(message.from_user.id)
+    if not auth_data:
+        bot.send_message(message.chat.id, "❌ ACCESS_DENIED: Subscription Required.")
         return
-    user_id = str(message.from_user.id)
-    try:
-        doc_ref = db.collection('artifacts').document(APP_ID).collection('public').document('data').collection('verified_users').document(user_id)
-        doc = doc_ref.get()
-        if doc.exists:
-            bot.send_message(message.chat.id, "🎯 STRIKE_PROTOCOL_ENGAGED.\n\nSovereign status confirmed.")
-        else:
-            bot.send_message(message.chat.id, f"❌ ACCESS_DENIED.\n\nID {user_id} not activated.")
-    except Exception as e:
-        traceback.print_exc()
-        bot.send_message(message.chat.id, "❌ ERROR: Database communication failed.")
+    bot.send_message(message.chat.id, "🔭 SNIPER_INITIALIZED: Send CA to lock target.")
 
-# --- THE CLEAN POLLING LOOP ---
+@bot.message_handler(commands=['raid'])
+def raid(message):
+    auth_data = check_auth(message.from_user.id)
+    if not auth_data:
+        bot.send_message(message.chat.id, "❌ ACCESS_DENIED: Subscription Required.")
+        return
+    bot.send_message(message.chat.id, "📣 RAID_ENGINE_READY: Target Twitter URL required.")
+
+# --- RUNTIME ---
+app = Flask(__name__)
+@app.route('/health')
+def health(): return {"status": "online"}, 200
+
+def run_health():
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
+
 def start_polling():
-    print(f"🚀 Initializing Clean Polling for {APP_ID}...")
-    # Force drop everything before starting
     bot.delete_webhook(drop_pending_updates=True)
-    time.sleep(5) # Give Telegram time to breathe
-
     while True:
         try:
-            # Use single-threaded polling with long intervals to resolve 409
-            bot.polling(none_stop=True, interval=5, timeout=30)
-        except Exception as e:
-            if "Conflict" in str(e):
-                print("⚠️ Conflict detected. Sleeping 15s to allow old instance to die...")
-                time.sleep(15)
-            else:
-                print(f"⚠️ Polling issue: {e}")
-                time.sleep(5)
+            bot.polling(none_stop=True, interval=3, timeout=30)
+        except Exception:
+            time.sleep(10)
 
 if __name__ == "__main__":
     if TOKEN:
-        threading.Thread(target=run_health_server, daemon=True).start()
+        threading.Thread(target=run_health, daemon=True).start()
         start_polling()
