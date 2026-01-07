@@ -15,14 +15,12 @@ try:
         service_account_info = os.environ.get("FIREBASE_SERVICE_ACCOUNT")
         if service_account_info:
             try:
-                # Clean the string (remove potential wrapper quotes from Render)
                 cleaned_info = service_account_info.strip()
                 if (cleaned_info.startswith("'") and cleaned_info.endswith("'")) or \
                    (cleaned_info.startswith('"') and cleaned_info.endswith('"')):
                     cleaned_info = cleaned_info[1:-1]
 
                 info = json.loads(cleaned_info)
-                # Fix for private_key newline characters if they got escaped
                 if "private_key" in info:
                     info["private_key"] = info["private_key"].replace("\\n", "\n")
 
@@ -32,21 +30,18 @@ try:
                 print("✅ Firebase initialized successfully.")
             except Exception as json_err:
                 print(f"❌ JSON Parsing Error: {json_err}")
-        else:
-            print("⚠️ WARNING: FIREBASE_SERVICE_ACCOUNT not found in environment.")
 except Exception as e:
     print(f"❌ Firebase Critical Error: {e}")
 
 # --- BOT CONFIG ---
 TOKEN = os.environ.get("BOT_TOKEN")
 APP_ID = os.environ.get("__app_id", "mex-war-system")
-bot = telebot.TeleBot(TOKEN)
+bot = telebot.TeleBot(TOKEN, threaded=False) # Disable threading to prevent race conditions
 
 # --- HEALTH SERVER ---
 app = Flask(__name__)
 @app.route('/health')
-def health(): 
-    return {"status": "online", "db_connected": db is not None}, 200
+def health(): return {"status": "online", "db_connected": db is not None}, 200
 
 def run_health_server():
     port = int(os.environ.get("PORT", 10000))
@@ -62,46 +57,38 @@ def handle_strike(message):
     if db is None:
         bot.send_message(message.chat.id, "❌ SYSTEM_OFFLINE: Database not connected.")
         return
-
     user_id = str(message.from_user.id)
     try:
-        # Standard collection path matching your React setup
         doc_ref = db.collection('artifacts').document(APP_ID).collection('public').document('data').collection('verified_users').document(user_id)
         doc = doc_ref.get()
-
         if doc.exists:
             bot.send_message(message.chat.id, "🎯 STRIKE_PROTOCOL_ENGAGED.\n\nSovereign status confirmed.")
         else:
-            bot.send_message(message.chat.id, f"❌ ACCESS_DENIED.\n\nID {user_id} is not activated.")
+            bot.send_message(message.chat.id, f"❌ ACCESS_DENIED.\n\nID {user_id} not activated.")
     except Exception as e:
-        print(f"--- FIRESTORE ERROR ---")
         traceback.print_exc()
-        bot.send_message(message.chat.id, "❌ ERROR: Database communication failed. System re-syncing...")
+        bot.send_message(message.chat.id, "❌ ERROR: Database communication failed.")
 
-# --- SECURE POLLING LOOP ---
+# --- THE CLEAN POLLING LOOP ---
 def start_polling():
-    print(f"🚀 Starting Bot Polling for {APP_ID}...")
-    # Force delete any existing webhooks or sessions
-    try:
-        bot.delete_webhook(drop_pending_updates=True)
-        time.sleep(2)
-    except:
-        pass
+    print(f"🚀 Initializing Clean Polling for {APP_ID}...")
+    # Force drop everything before starting
+    bot.delete_webhook(drop_pending_updates=True)
+    time.sleep(5) # Give Telegram time to breathe
 
     while True:
         try:
-            bot.polling(none_stop=True, interval=2, timeout=20)
+            # Use single-threaded polling with long intervals to resolve 409
+            bot.polling(none_stop=True, interval=5, timeout=30)
         except Exception as e:
             if "Conflict" in str(e):
-                print("⚠️ Conflict detected. Waiting for old instance to die (15s)...")
+                print("⚠️ Conflict detected. Sleeping 15s to allow old instance to die...")
                 time.sleep(15)
             else:
-                print(f"❌ Polling Error: {e}")
+                print(f"⚠️ Polling issue: {e}")
                 time.sleep(5)
 
 if __name__ == "__main__":
     if TOKEN:
         threading.Thread(target=run_health_server, daemon=True).start()
         start_polling()
-    else:
-        print("🛑 Error: No BOT_TOKEN found.")
