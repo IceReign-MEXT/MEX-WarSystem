@@ -1,6 +1,7 @@
 import telebot
 import os
 import threading
+import json
 from flask import Flask
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -9,27 +10,45 @@ from firebase_admin import credentials, firestore
 db = None
 try:
     if not firebase_admin._apps:
-        # Render puts Secret Files in the root directory by default
-        key_path = "serviceAccountKey.json"
-        if os.path.exists(key_path):
-            cred = credentials.Certificate(key_path)
+        # Priority 1: Environment Variable (Best for Render)
+        service_account_info = os.environ.get("FIREBASE_SERVICE_ACCOUNT")
+
+        if service_account_info:
+            try:
+                # Handle potential quotes or string issues from env
+                info = json.loads(service_account_info)
+                cred = credentials.Certificate(info)
+                firebase_admin.initialize_app(cred)
+                db = firestore.client()
+                print("✅ Firebase initialized via Environment Variable.")
+            except Exception as json_err:
+                print(f"❌ JSON Parsing Error for FIREBASE_SERVICE_ACCOUNT: {json_err}")
+
+        # Priority 2: Local File (Fallback for Termux)
+        elif os.path.exists("serviceAccountKey.json"):
+            cred = credentials.Certificate("serviceAccountKey.json")
             firebase_admin.initialize_app(cred)
             db = firestore.client()
-            print("✅ Firebase initialized successfully.")
+            print("✅ Firebase initialized via serviceAccountKey.json file.")
         else:
-            print("❌ ERROR: serviceAccountKey.json not found in root.")
+            print("⚠️ WARNING: No Firebase credentials found (Env or File).")
 except Exception as e:
     print(f"❌ Firebase Critical Error: {e}")
 
 # --- BOT CONFIG ---
 TOKEN = os.environ.get("BOT_TOKEN")
-APP_ID = "mex-war-system"
+APP_ID = os.environ.get("__app_id", "mex-war-system")
 bot = telebot.TeleBot(TOKEN)
 
 # --- HEALTH SERVER ---
 app = Flask(__name__)
 @app.route('/health')
-def health(): return {"status": "online", "db_connected": db is not None}, 200
+def health():
+    return {
+        "status": "online",
+        "db_connected": db is not None,
+        "app_id": APP_ID
+    }, 200
 
 def run_health_server():
     port = int(os.environ.get("PORT", 8080))
@@ -47,12 +66,12 @@ def get_id(message):
 @bot.message_handler(commands=['strike'])
 def handle_strike(message):
     if db is None:
-        bot.send_message(message.chat.id, "❌ SYSTEM_OFFLINE: Firebase configuration missing on server.")
+        bot.send_message(message.chat.id, "❌ SYSTEM_OFFLINE: Firebase credentials missing.")
         return
 
     user_id = str(message.from_user.id)
     try:
-        # Correct path based on App.jsx logic: artifacts/mex-war-system/public/data/verified_users/{user_id}
+        # Path: artifacts/{APP_ID}/public/data/verified_users/{user_id}
         doc_ref = db.collection('artifacts').document(APP_ID).collection('public').document('data').collection('verified_users').document(user_id)
         doc = doc_ref.get()
 
@@ -67,7 +86,7 @@ def handle_strike(message):
 if __name__ == "__main__":
     if TOKEN:
         threading.Thread(target=run_health_server, daemon=True).start()
-        print("🚀 Starting Bot Polling...")
+        print(f"🚀 Starting Bot Polling for {APP_ID}...")
         bot.infinity_polling()
     else:
-        print("🛑 Error: No BOT_TOKEN found in environment variables.")
+        print("🛑 Error: No BOT_TOKEN found.")
