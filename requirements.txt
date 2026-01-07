@@ -1,5 +1,5 @@
-http://googleusercontent.com/immersive_entry_chip/1
 pyTelegramBotAPI
 flask
 requests
 firebase-admin
+gunicorn
