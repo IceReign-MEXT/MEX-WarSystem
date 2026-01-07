@@ -1,5 +1,5 @@
 pyTelegramBotAPI
 flask
-requests
 firebase-admin
+requests
 gunicorn
