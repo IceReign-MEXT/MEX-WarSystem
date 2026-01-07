@@ -15,7 +15,17 @@ try:
         service_account_info = os.environ.get("FIREBASE_SERVICE_ACCOUNT")
         if service_account_info:
             try:
-                info = json.loads(service_account_info)
+                # Clean the string (remove potential wrapper quotes from Render)
+                cleaned_info = service_account_info.strip()
+                if (cleaned_info.startswith("'") and cleaned_info.endswith("'")) or \
+                   (cleaned_info.startswith('"') and cleaned_info.endswith('"')):
+                    cleaned_info = cleaned_info[1:-1]
+
+                info = json.loads(cleaned_info)
+                # Fix for private_key newline characters if they got escaped
+                if "private_key" in info:
+                    info["private_key"] = info["private_key"].replace("\\n", "\n")
+
                 cred = credentials.Certificate(info)
                 firebase_admin.initialize_app(cred)
                 db = firestore.client()
@@ -23,7 +33,7 @@ try:
             except Exception as json_err:
                 print(f"❌ JSON Parsing Error: {json_err}")
         else:
-            print("⚠️ WARNING: No Firebase credentials found in Env.")
+            print("⚠️ WARNING: FIREBASE_SERVICE_ACCOUNT not found in environment.")
 except Exception as e:
     print(f"❌ Firebase Critical Error: {e}")
 
@@ -35,7 +45,7 @@ bot = telebot.TeleBot(TOKEN)
 # --- HEALTH SERVER ---
 app = Flask(__name__)
 @app.route('/health')
-def health():
+def health(): 
     return {"status": "online", "db_connected": db is not None}, 200
 
 def run_health_server():
@@ -47,10 +57,6 @@ def run_health_server():
 def start(message):
     bot.reply_to(message, "❄️ ICE_GODS // MONOLITH_OS\nStatus: ONLINE\n\nUse /strike to check node activation.")
 
-@bot.message_handler(commands=['id'])
-def get_id(message):
-    bot.reply_to(message, f"Your Telegram ID: `{message.from_user.id}`", parse_mode="Markdown")
-
 @bot.message_handler(commands=['strike'])
 def handle_strike(message):
     if db is None:
@@ -59,6 +65,7 @@ def handle_strike(message):
 
     user_id = str(message.from_user.id)
     try:
+        # Standard collection path matching your React setup
         doc_ref = db.collection('artifacts').document(APP_ID).collection('public').document('data').collection('verified_users').document(user_id)
         doc = doc_ref.get()
 
@@ -69,27 +76,32 @@ def handle_strike(message):
     except Exception as e:
         print(f"--- FIRESTORE ERROR ---")
         traceback.print_exc()
-        bot.send_message(message.chat.id, "❌ ERROR: Database communication failed.")
+        bot.send_message(message.chat.id, "❌ ERROR: Database communication failed. System re-syncing...")
 
-# --- ANTI-CONFLICT POLLING ---
+# --- SECURE POLLING LOOP ---
 def start_polling():
     print(f"🚀 Starting Bot Polling for {APP_ID}...")
+    # Force delete any existing webhooks or sessions
+    try:
+        bot.delete_webhook(drop_pending_updates=True)
+        time.sleep(2)
+    except:
+        pass
+
     while True:
         try:
-            bot.polling(none_stop=True, interval=3, timeout=20)
+            bot.polling(none_stop=True, interval=2, timeout=20)
         except Exception as e:
             if "Conflict" in str(e):
-                print("⚠️ Conflict detected. Other instance running. Retrying in 10s...")
-                time.sleep(10)
+                print("⚠️ Conflict detected. Waiting for old instance to die (15s)...")
+                time.sleep(15)
             else:
                 print(f"❌ Polling Error: {e}")
                 time.sleep(5)
 
 if __name__ == "__main__":
     if TOKEN:
-        # Start Health Server
         threading.Thread(target=run_health_server, daemon=True).start()
-        # Start Polling with retry logic
         start_polling()
     else:
         print("🛑 Error: No BOT_TOKEN found.")
