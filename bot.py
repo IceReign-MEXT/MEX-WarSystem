@@ -28,6 +28,7 @@ except Exception as e:
 # --- BOT CONFIG ---
 TOKEN = os.environ.get("BOT_TOKEN")
 APP_ID = os.environ.get("__app_id", "mex-war-system")
+# Use single-threaded mode to prevent internal race conditions
 bot = telebot.TeleBot(TOKEN, threaded=False)
 
 # --- UTILS ---
@@ -41,53 +42,48 @@ def check_auth(user_id):
 # --- COMMANDS ---
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, "❄️ ICE_GODS // MONOLITH_V2\nStatus: ONLINE\n\nCommands:\n/strike - Verify Node\n/snipe - Target Token\n/raid - Social Ops\n/status - System Health")
+    bot.reply_to(message, "❄️ ICE_GODS // MONOLITH_V2\nStatus: ONLINE\n\nCommands:\n/strike - Verify Node\n/snipe - Target Token\n/raid - Social Ops")
 
 @bot.message_handler(commands=['strike', 'status'])
 def strike(message):
     auth_data = check_auth(message.from_user.id)
     if auth_data:
-        msg = (
-            f"🎯 NODE_ACTIVE: {message.from_user.id}\n"
-            f"SUB: {auth_data.get('subscription')}\n"
-            f"WALLET: {auth_data.get('wallet')[:10]}...\n"
-            "SYSTEM: OPTIMAL"
-        )
+        msg = f"🎯 NODE_ACTIVE: {message.from_user.id}\nSUB: {auth_data.get('subscription', 'PREMIUM')}\nSYSTEM: OPTIMAL"
         bot.send_message(message.chat.id, msg)
     else:
-        bot.send_message(message.chat.id, "❌ UNAUTHORIZED: Activate your node via the Dashboard first.")
+        bot.send_message(message.chat.id, "❌ UNAUTHORIZED: Activate your node via the Dashboard (0.5 SOL) first.")
 
-@bot.message_handler(commands=['snipe'])
-def snipe(message):
-    auth_data = check_auth(message.from_user.id)
-    if not auth_data:
-        bot.send_message(message.chat.id, "❌ ACCESS_DENIED: Subscription Required.")
-        return
-    bot.send_message(message.chat.id, "🔭 SNIPER_INITIALIZED: Send CA to lock target.")
-
-@bot.message_handler(commands=['raid'])
-def raid(message):
-    auth_data = check_auth(message.from_user.id)
-    if not auth_data:
-        bot.send_message(message.chat.id, "❌ ACCESS_DENIED: Subscription Required.")
-        return
-    bot.send_message(message.chat.id, "📣 RAID_ENGINE_READY: Target Twitter URL required.")
-
-# --- RUNTIME ---
+# --- RUNTIME & CONFLICT RESOLUTION ---
 app = Flask(__name__)
 @app.route('/health')
-def health(): return {"status": "online"}, 200
+def health():
+    return {"status": "online"}, 200
 
 def run_health():
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
 
 def start_polling():
-    bot.delete_webhook(drop_pending_updates=True)
+    print(f"🚀 [SYSTEM] CLEARING SESSIONS FOR {APP_ID}...")
+    # Force delete webhook to clear the line
+    try:
+        bot.delete_webhook(drop_pending_updates=True)
+        time.sleep(5)
+    except:
+        pass
+
     while True:
         try:
-            bot.polling(none_stop=True, interval=3, timeout=30)
-        except Exception:
-            time.sleep(10)
+            print("📡 [NET] ATTEMPTING_POLLING_LOCK...")
+            bot.polling(none_stop=True, interval=5, timeout=20)
+        except Exception as e:
+            error_msg = str(e)
+            if "Conflict" in error_msg:
+                print("⚠️ [CONFLICT] OTHER_INSTANCE_DETECTED. WAITING_FOR_SIGTERM (20s)...")
+                # Wait longer than Render's health check cycle
+                time.sleep(20)
+            else:
+                print(f"❌ [ERROR] {error_msg}")
+                time.sleep(10)
 
 if __name__ == "__main__":
     if TOKEN:
