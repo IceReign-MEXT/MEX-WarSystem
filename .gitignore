@@ -1,15 +1,7 @@
-Ignore private environment variables
-​.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-​Ignore build files
-​dist/
-build/
 node_modules/
-​Ignore system logs
-​npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.DS_Store
+dist/
+.env
+__pycache__/
+*.pyc
+.venv/
+
