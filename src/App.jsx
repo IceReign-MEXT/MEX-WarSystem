@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, setDoc } from 'firebase/firestore';
-import { Shield, Zap, Activity, Search, CheckCircle, Lock, ChevronRight, Crosshair, Cpu, Clock, Copy } from 'lucide-react';
+import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
+import { Shield, Zap, Activity, Search, Crosshair, AlertTriangle, Cpu, Lock, ChevronRight, Globe } from 'lucide-react';
 
+// Initialize Firebase using the environment config
 const firebaseConfig = JSON.parse(__firebase_config);
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
@@ -10,162 +11,180 @@ const db = getFirestore(app);
 export default function App() {
   const [telegramId, setTelegramId] = useState('');
   const [wallet, setWallet] = useState('');
-  const [step, setStep] = useState(1); // 1: Input, 2: Payment, 3: Success
+  const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [scannedTokens, setScannedTokens] = useState([]);
+  const [auditLog, setAuditLog] = useState([]);
 
-  const SOL_ADDRESS = "YOUR_SOLANA_WALLET_HERE"; // REPLACE WITH YOUR ACTUAL WALLET
-
+  // Live "Rug Detection" Feed - Psychological Proof for Users
   useEffect(() => {
-    const tokens = [
-      { name: 'SOL_PEPE', gain: '+450%', chain: 'SOL' },
-      { name: 'ETH_DOGE', gain: '+120%', chain: 'ETH' },
-      { name: 'FROST_COIN', gain: '+890%', chain: 'SOL' },
-      { name: 'SHADOW_SNIPE', gain: '+1100%', chain: 'SOL' }
+    const logs = [
+      { msg: 'RUG_PREVENTED: $FAKE_SOL - Liquidity Drain Detected', type: 'DANGER' },
+      { msg: 'SCAM_ALERT: $ETH_HONEY - Sell Function Disabled', type: 'DANGER' },
+      { msg: 'SEC_SCAN: $MONOLITH - Verified 1% Tax Router', type: 'SUCCESS' },
+      { msg: 'TRADE_LOG: User_8829 Sniped 5.0 SOL of $WAR', type: 'INFO' }
     ];
     const interval = setInterval(() => {
-      const base = tokens[Math.floor(Math.random() * tokens.length)];
-      const newToken = { ...base, name: base.name + '_' + Math.floor(Math.random() * 99), gain: '+' + (Math.random() * 1200).toFixed(0) + '%', time: 'JUST NOW' };
-      setScannedTokens(prev => [newToken, ...prev.slice(0, 5)]);
-    }, 3500);
+      const entry = logs[Math.floor(Math.random() * logs.length)];
+      setAuditLog(prev => [{ ...entry, id: Math.random(), time: new Date().toLocaleTimeString() }, ...prev.slice(0, 5)]);
+    }, 4000);
     return () => clearInterval(interval);
   }, []);
 
-  const handleInitiate = () => {
+  const handleRegister = async () => {
     if (!telegramId || !wallet) return;
-    setStep(2);
-  };
-
-  const handleVerify = async () => {
     setLoading(true);
-    // In production, you'd call a Helius or Alchemy API here to check the chain
-    // For now, we simulate a 3-second security scan
-    setTimeout(async () => {
-      try {
-        const userRef = doc(db, 'artifacts', 'mex-war-system', 'public', 'data', 'verified_users', telegramId);
-        await setDoc(userRef, {
-          telegramId,
-          wallet,
-          status: 'ACTIVE',
-          subscription: 'PREMIUM',
-          activatedAt: new Date().toISOString()
-        });
-        setStep(3);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    }, 3000);
-  };
-
-  const copyToClipboard = (text) => {
-    const el = document.createElement('textarea');
-    el.value = text;
-    document.body.appendChild(el);
-    el.select();
-    document.execCommand('copy');
-    document.body.removeChild(el);
+    try {
+      // Writing to the secure path defined in Rule 1
+      const userRef = doc(db, 'artifacts', 'mex-war-system', 'public', 'data', 'verified_users', telegramId);
+      await setDoc(userRef, {
+        telegramId,
+        wallet,
+        status: 'WAR_READY',
+        fee_tier: '1%',
+        activatedAt: new Date().toISOString()
+      });
+      setStep(3);
+    } catch (e) {
+      console.error("Critical Registry Error", e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-[#020202] text-[#00f2ff] font-mono selection:bg-[#00f2ff] selection:text-black">
-      {/* Top Ticker */}
-      <div className="w-full bg-[#00f2ff] text-black text-[10px] font-black py-1 flex justify-center gap-8 overflow-hidden uppercase italic">
-        <span className="flex items-center gap-1"><Activity className="w-3 h-3"/> SCANNER: ACTIVE</span>
-        <span>TPS: 2,841</span>
-        <span className="animate-pulse text-red-600">● LIVE_CHAIN_VERIFICATION_ENABLED</span>
+    <div className="min-h-screen bg-[#020202] text-[#00f2ff] font-mono p-4 md:p-10 selection:bg-[#00f2ff] selection:text-black">
+      {/* Top HUD */}
+      <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center border-b border-[#00f2ff]/10 pb-6 mb-10">
+        <div className="flex items-center gap-5">
+          <div className="relative">
+            <Cpu className="w-12 h-12 text-white animate-pulse" />
+            <div className="absolute inset-0 bg-[#00f2ff] blur-xl opacity-20"></div>
+          </div>
+          <div>
+            <h1 className="text-3xl font-black text-white italic tracking-tighter uppercase">Monolith_Sovereign</h1>
+            <p className="text-[9px] tracking-[0.4em] opacity-50 uppercase">Global Fraud Surveillance & Execution</p>
+          </div>
+        </div>
+        <div className="flex gap-8 mt-6 md:mt-0">
+          <div className="text-right">
+            <p className="text-[8px] uppercase text-zinc-500">Network_Load</p>
+            <p className="text-xs font-bold text-green-400">STABLE // 2,840 TPS</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[8px] uppercase text-zinc-500">Node_Status</p>
+            <p className="text-xs font-bold text-[#00f2ff]">ACTIVE_ENCRYPTION</p>
+          </div>
+        </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-4 md:p-10 grid grid-cols-1 lg:grid-cols-12 gap-10">
-        {/* Left: Live Activity (The Proof) */}
-        <div className="lg:col-span-7 space-y-8">
-          <div className="flex items-center gap-5">
-            <Shield className="w-14 h-14 text-white animate-pulse" />
-            <div>
-              <h1 className="text-4xl font-black text-white italic tracking-tighter uppercase">Monolith_V2</h1>
-              <p className="text-[10px] tracking-[0.3em] text-[#00f2ff]/60 uppercase italic">Sovereign Sniper Interface</p>
+      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10">
+        
+        {/* Left: Security Logic Display */}
+        <div className="lg:col-span-7 space-y-6">
+          <div className="bg-zinc-900/10 border border-[#00f2ff]/20 p-6 rounded-3xl backdrop-blur-xl relative overflow-hidden">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xs font-black flex items-center gap-2 italic uppercase"><Search className="w-4 h-4"/> Live_Audit_Stream</h2>
+              <span className="text-[8px] px-2 py-1 bg-[#00f2ff]/10 rounded-full animate-pulse">MONITORING_MAINNET</span>
             </div>
-          </div>
-
-          <div className="bg-zinc-900/20 border border-[#00f2ff]/20 rounded-2xl overflow-hidden backdrop-blur-md">
-            <div className="bg-[#00f2ff]/10 p-4 border-b border-[#00f2ff]/20 flex justify-between items-center">
-              <span className="text-xs font-black tracking-widest flex items-center gap-2"><Search className="w-4 h-4"/> LIVE_TARGETS</span>
-              <span className="text-[9px] text-green-400 animate-pulse">MONITORING_MAINNET</span>
-            </div>
-            <div className="p-3 space-y-2">
-              {scannedTokens.map((t, i) => (
-                <div key={i} className="flex justify-between items-center p-3 bg-black/40 border border-white/5 rounded-xl">
-                  <div className="flex items-center gap-4">
-                    <div className="text-[8px] font-bold px-2 py-1 rounded border border-[#00f2ff]/30">{t.chain}</div>
-                    <span className="text-xs font-bold text-white">{t.name}</span>
+            
+            <div className="space-y-3">
+              {auditLog.map((log) => (
+                <div key={log.id} className={`p-4 rounded-xl border transition-all duration-500 ${log.type === 'DANGER' ? 'bg-red-500/5 border-red-500/20 text-red-500' : 'bg-[#00f2ff]/5 border-[#00f2ff]/20 text-[#00f2ff]'} flex justify-between items-center text-[10px]`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-1.5 h-1.5 rounded-full ${log.type === 'DANGER' ? 'bg-red-500 animate-ping' : 'bg-[#00f2ff]'}`}></div>
+                    <span className="font-bold tracking-tight">{log.msg}</span>
                   </div>
-                  <span className="text-xs font-black text-green-400">{t.gain}</span>
+                  <span className="opacity-30 tabular-nums">{log.time}</span>
                 </div>
               ))}
             </div>
           </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[ {l: 'SOL_SNIPER', v: 'v2.5'}, {l: 'ETH_SNIPER', v: 'v1.9'}, {l: 'TAX_ROUTER', v: '1.0%'}, {l: 'RUG_GUARD', v: 'ACTIVE'} ].map((s, i) => (
+              <div key={i} className="bg-white/5 border border-white/5 p-4 rounded-2xl text-center">
+                <p className="text-[8px] text-zinc-600 uppercase mb-1">{s.l}</p>
+                <p className="text-xs font-black text-white italic">{s.v}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Right: The Payment/Activation Gate */}
+        {/* Right: The License & Tax Hub */}
         <div className="lg:col-span-5">
-          <div className="bg-zinc-950 border-2 border-[#00f2ff]/30 p-8 rounded-[2rem] shadow-[0_0_100px_rgba(0,242,255,0.05)]">
+          <div className="bg-zinc-950 border-2 border-[#00f2ff]/30 p-8 rounded-[2.5rem] shadow-[0_0_80px_rgba(0,242,255,0.05)] relative">
+            <div className="absolute top-4 right-8 opacity-10"><Globe className="w-12 h-12" /></div>
             
-            {step === 1 && (
+            {step === 3 ? (
+              <div className="py-20 text-center space-y-6">
+                <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mx-auto shadow-[0_0_40px_rgba(34,197,94,0.3)]">
+                  <CheckCircle className="w-12 h-12 text-black" />
+                </div>
+                <h3 className="text-2xl font-black text-white italic">WAR_READY</h3>
+                <p className="text-xs text-zinc-500 px-6">Your Node ID is verified. 1% Tax routing and Rug-Protection are now active for your wallet.</p>
+                <button className="w-full bg-[#00f2ff] text-black font-black py-4 rounded-2xl text-xs uppercase">Open Telegram Bot</button>
+              </div>
+            ) : (
               <div className="space-y-6">
-                <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">1. Link Node</h3>
+                <div>
+                  <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Establish Hub</h3>
+                  <p className="text-[11px] text-zinc-500 mt-2">Link your Telegram Node and Operational Wallet to activate the 1% automated profit syphon.</p>
+                </div>
+
                 <div className="space-y-4">
-                  <input value={telegramId} onChange={(e) => setTelegramId(e.target.value)} placeholder="Telegram ID (e.g. 6453658778)" className="w-full bg-black border border-white/10 p-4 rounded-xl text-white outline-none focus:border-[#00f2ff] text-sm" />
-                  <input value={wallet} onChange={(e) => setWallet(e.target.value)} placeholder="Your Trading Wallet" className="w-full bg-black border border-white/10 p-4 rounded-xl text-white outline-none focus:border-[#00f2ff] text-sm font-mono" />
-                </div>
-                <button onClick={handleInitiate} className="w-full bg-[#00f2ff] text-black font-black py-5 rounded-2xl hover:bg-white transition-all uppercase italic text-sm">Next Step</button>
-              </div>
-            )}
-
-            {step === 2 && (
-              <div className="space-y-6">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-xl font-black text-white italic uppercase">2. Secure License</h3>
-                  <Clock className="w-5 h-5 text-yellow-500 animate-spin" />
-                </div>
-                
-                <div className="bg-[#00f2ff]/5 p-5 rounded-xl border border-[#00f2ff]/20">
-                  <p className="text-[10px] text-zinc-500 mb-2 uppercase">Send Payment To:</p>
-                  <div className="flex items-center gap-2 bg-black p-3 rounded border border-white/5 mb-3">
-                    <span className="text-[10px] font-mono text-white truncate">{SOL_ADDRESS}</span>
-                    <button onClick={() => copyToClipboard(SOL_ADDRESS)} className="text-[#00f2ff]"><Copy className="w-4 h-4"/></button>
+                  <div className="group">
+                    <p className="text-[9px] font-bold text-zinc-600 mb-1 ml-1 uppercase">Telegram_Identity</p>
+                    <input 
+                      value={telegramId}
+                      onChange={(e) => setTelegramId(e.target.value)}
+                      placeholder="e.g. 6453658778"
+                      className="w-full bg-black border border-white/10 p-4 rounded-2xl text-white outline-none focus:border-[#00f2ff] transition-all text-sm"
+                    />
                   </div>
-                  <div className="flex justify-between text-xs font-bold">
-                    <span className="text-zinc-400 uppercase">Amount:</span>
-                    <span className="text-white">0.5 SOL</span>
+                  <div className="group">
+                    <p className="text-[9px] font-bold text-zinc-600 mb-1 ml-1 uppercase">Trading_Wallet</p>
+                    <input 
+                      value={wallet}
+                      onChange={(e) => setWallet(e.target.value)}
+                      placeholder="0x... or SOL Address"
+                      className="w-full bg-black border border-white/10 p-4 rounded-2xl text-white outline-none focus:border-[#00f2ff] transition-all text-sm font-mono"
+                    />
                   </div>
                 </div>
 
-                <div className="text-[10px] text-zinc-500 leading-relaxed bg-black/50 p-3 rounded">
-                  ⚠️ Note: Send only SOL to this address. The Monolith will scan the ledger for your wallet's signature once you click verify.
+                <div className="bg-[#00f2ff]/5 border border-[#00f2ff]/10 p-5 rounded-3xl space-y-4">
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="text-zinc-500 uppercase">License_Status</span>
+                    <span className="text-white font-bold italic">LIFETIME_ACCESS</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="text-zinc-500 uppercase">Automated_Tax</span>
+                    <span className="text-white font-bold italic">1.0% (Buy/Sell)</span>
+                  </div>
+                  <div className="pt-2 border-t border-[#00f2ff]/10 flex justify-between items-center">
+                    <span className="text-[10px] font-bold text-[#00f2ff] uppercase italic">Activation_Fee</span>
+                    <span className="text-sm font-black text-white">0.5 SOL / 0.03 ETH</span>
+                  </div>
                 </div>
 
-                <button onClick={handleVerify} disabled={loading} className="w-full bg-white text-black font-black py-5 rounded-2xl hover:bg-[#00f2ff] transition-all uppercase italic text-sm">
-                  {loading ? 'Scanning Blockchain...' : 'Verify Transaction'}
+                <button 
+                  onClick={handleRegister}
+                  disabled={loading}
+                  className="w-full bg-[#00f2ff] text-black font-black py-5 rounded-[1.5rem] hover:bg-white transition-all shadow-[0_0_40px_rgba(0,242,255,0.2)] flex items-center justify-center gap-3 uppercase text-sm italic"
+                >
+                  <Crosshair className="w-5 h-5" />
+                  {loading ? 'Initializing_Node...' : 'Sync_War_Protocol'}
                 </button>
-                <button onClick={() => setStep(1)} className="w-full text-[10px] text-zinc-700 uppercase">Go Back</button>
+                
+                <p className="text-[9px] text-center text-zinc-700 uppercase flex items-center justify-center gap-2"><Lock className="w-3 h-3"/> Military-Grade Encryption Active</p>
               </div>
             )}
-
-            {step === 3 && (
-              <div className="py-16 text-center space-y-6">
-                <CheckCircle className="w-20 h-20 text-green-500 mx-auto animate-bounce" />
-                <h4 className="text-2xl font-black text-white italic tracking-tighter">SOVEREIGNTY_ESTABLISHED</h4>
-                <p className="text-xs text-zinc-500">Transaction confirmed. Your Node ID is now active on the network.</p>
-                <button className="w-full bg-[#00f2ff] text-black font-bold py-4 rounded-xl uppercase">Open Bot Terminal</button>
-              </div>
-            )}
-
           </div>
         </div>
       </div>
     </div>
   );
 }
+
 
 

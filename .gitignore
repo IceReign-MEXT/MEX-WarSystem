@@ -1,15 +1,6 @@
-Private Credentials
-​.env
-serviceAccountKey.json
-​Python
-​pycache/
-*.py[cod]
-*$py.class
-.venv/
-env/
-venv/
-ENV/
-​OS Files
-​.DS_Store
-Thumbs.db
 .env
+node_modules/
+dist/
+__pycache__/
+venv/
+.DS_Store

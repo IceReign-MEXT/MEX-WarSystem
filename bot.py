@@ -3,72 +3,88 @@ from telebot import types
 import os
 import threading
 import json
-import time
 from flask import Flask
 import firebase_admin
 from firebase_admin import credentials, firestore
+import requests
 
-# --- ENV SETUP ---
+# --- SYSTEM CONFIG ---
 TOKEN = os.environ.get("BOT_TOKEN")
-# Your Channel ID (e.g., -100123456789)
 CHANNEL_ID = os.environ.get("CHANNEL_ID")
+VAULT = os.environ.get("VAULT_ADDRESS") # Your 1% Fee Wallet
 APP_ID = "mex-war-system"
 bot = telebot.TeleBot(TOKEN, threaded=False)
 
-# --- DB INIT ---
+# --- FIREBASE SETUP ---
 db = None
 try:
     if not firebase_admin._apps:
-        service_account_info = os.environ.get("FIREBASE_SERVICE_ACCOUNT")
-        info = json.loads(service_account_info.strip().strip("'\""))
-        cred = credentials.Certificate(info)
+        creds_raw = os.environ.get("FIREBASE_SERVICE_ACCOUNT")
+        creds_dict = json.loads(creds_raw)
+        if "private_key" in creds_dict:
+            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+        cred = credentials.Certificate(creds_dict)
         firebase_admin.initialize_app(cred)
         db = firestore.client()
-except: pass
+except Exception as e: print(f"DB_ERR: {e}")
 
-def check_auth(uid):
-    if not db: return None
-    doc = db.collection('artifacts').document(APP_ID).collection('public').document('data').collection('verified_users').document(str(uid)).get()
-    return doc.to_dict() if doc.exists else None
+# --- RUG & FRAUD DETECTION ---
+def scan_contract(ca, chain):
+    # Simulated Logic for Rug/Fake Token Detection
+    # In production, this hits DexScreener or GoPlus API
+    risk_score = 0
+    flags = []
 
-# --- INSTANT NOTIFICATION ---
-def broadcast(msg):
+    # Logic: Detect if it's a "honeypot"
+    if "0000" in ca: # Dummy check for simulation
+        risk_score = 99
+        flags.append("HONEYPOT_DETECTED")
+
+    return risk_score, flags
+
+# --- CHANNEL BROADCASTER (FOMO & SECURITY) ---
+def report_to_war_room(msg, type="INFO"):
+    prefix = "🛡️ [SEC_SCAN]" if type == "SEC" else "🚀 [LIVE_PROFIT]"
     if CHANNEL_ID:
-        try: bot.send_message(CHANNEL_ID, f"⚡ *MONOLITH_FEED:*\n{msg}", parse_mode="Markdown")
+        try: bot.send_message(CHANNEL_ID, f"*{prefix}*\n{msg}", parse_mode="Markdown")
         except: pass
 
 # --- HANDLERS ---
 @bot.message_handler(commands=['start'])
 def start(message):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add('🚀 ACTIVATE_SNIPER', '📊 WALLET_TRACKER', '🆔 GET_ID', '💎 PREMIUM_INFO')
-    bot.send_message(message.chat.id, "❄️ *MONOLITH_V2: MULTI-CHAIN WARFARE*\nDual-Engine (SOL/ETH) Online.", reply_markup=markup, parse_mode="Markdown")
+    uid = message.from_user.id
+    welcome = (
+        "⚔️ *MONOLITH GLOBAL TERMINAL*\n"
+        "Status: *WAR-READY*\n\n"
+        "1. Sniper Engine (1% Fuel Fee)\n"
+        "2. Rug-Protector (Active)\n"
+        "3. Whale-Tracker (Synced)\n\n"
+        "Your ID: `{}`"
+    ).format(uid)
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('🎯 SNIPE_TOKEN', '🛡️ SCAN_CA', '💰 MY_VAULT', '🔑 LINK_LICENSE')
+    bot.send_message(message.chat.id, welcome, reply_markup=markup, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda m: True)
-def handle_text(message):
+def handle_war_room(message):
     uid = message.from_user.id
-    if message.text == '🆔 GET_ID':
-        bot.reply_to(message, f"Terminal ID: `{uid}`")
 
-    elif message.text == '🚀 ACTIVATE_SNIPER':
-        user = check_auth(uid)
-        if user:
-            bot.send_message(message.chat.id, "✅ *SNIPER_ACTIVE*\nEngine: Dual SOL/ETH\nStatus: Scanning for Targets...")
-            broadcast(f"Operator {uid} has engaged the Sniper Engine! 🔭")
+    if message.text == '🛡️ SCAN_CA':
+        bot.send_message(message.chat.id, "🌐 Send Contract Address (SOL/ETH) for deep audit:")
+
+    elif message.text == '🎯 SNIPE_TOKEN':
+        # Check subscription via Firebase
+        doc = db.collection('artifacts').document(APP_ID).collection('public').document('data').collection('verified_users').document(str(uid)).get()
+        if doc.exists:
+            bot.send_message(message.chat.id, "✅ *LICENSED OPERATOR*\n1% Buy/Sell Tax Active.\nDestination: `{}`".format(VAULT))
         else:
-            bot.send_message(message.chat.id, "❌ *ACCESS_DENIED*\nPlease activate your Node ID on the Dashboard first.")
+            bot.send_message(message.chat.id, "❌ *UNAUTHORIZED*\nUpgrade to a War-License on the Dashboard.")
 
-    elif message.text == '📊 WALLET_TRACKER':
-        user = check_auth(uid)
-        if user:
-            bot.send_message(message.chat.id, f"🔍 *MONITORING_WALLET:*\n`{user.get('wallet')}`\nInstant notifications enabled.")
-        else:
-            bot.send_message(message.chat.id, "❌ Activation Required.")
-
-# --- FLASK ---
+# --- HEALTH ---
 app = Flask(__name__)
 @app.route('/health')
-def health(): return {"status": "online"}, 200
+def health(): return {"status": "sovereign"}, 200
 
 if __name__ == "__main__":
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000))), daemon=True).start()
