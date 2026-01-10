@@ -1,26 +1,53 @@
-❄️ MONOLITH V22: AUTONOMOUS SOVEREIGN
-​Professional-grade blockchain surveillance and node activation system. This ecosystem synchronizes a Telegram Bot (The Brain) with a high-end React Dashboard (The Face) using a real-time Firestore backbone.
-​⚙️ Core Infrastructure
-​Frontend: React + Tailwind + Lucide (Deployed on Vercel)
-​Backend: Python + Telebot + Firebase Admin (Deployed on Render)
-​Database: Google Firestore (NoSQL Real-time)
-​Network: Autonomous Blockchain Detection (SOL/ETH)
-​🚀 Deployment Instructions
-​Backend (Render)
-​Ensure requirements.txt contains firebase-admin.
-​Set Environment Variables:
-​BOT_TOKEN: Your Telegram bot token.
-​FIREBASE_SERVICE_ACCOUNT: The full JSON from Firebase Service Accounts.
-​__firebase_config: The Web SDK configuration JSON.
-​Frontend (Vercel)
-​Connect GitHub repository.
-​The App.jsx automatically consumes the Firebase credentials to reflect live node status.
-​🛠 Command Reference (Termux)
-​git add .
-​git commit -m "update message"
-​git push origin main
-​🛡 Security Protocol
-​Zero human intervention for payment verification.
-​AES-256-GCM encryption standards for data transit.
-​Autonomous whitelisting via Transaction Hash verification.
-​Developed under the Ice Gods Domain.
+# 🏰 ChainPilot V13 - Fortress Edition
+
+**The Ultimate Crypto Intelligence & Monetization Terminal.**
+
+ChainPilot is an enterprise-grade Telegram bot designed for High-Ticket crypto communities. It combines automated blockchain verification, real-time Helius Network stats, and an aggressive "Alpha Hunter" signal engine to keep communities active and profitable.
+
+---
+
+## ⚡ Features
+
+### 💰 Monetization Engine
+*   **Auto-Invoicing:** Accepts ETH & SOL payments instantly.
+*   **Tiered Access:** 24h Sniper Pass ($25) to Whale Month ($299).
+*   **Developer Services:** B2B funnel for listing tokens ($500+).
+
+### 📡 Intelligence System
+*   **Helius RPC Integration:** Live Solana TPS and Block tracking.
+*   **Alpha Hunter:** Auto-scans market for trending tokens every 15 mins.
+*   **Scam Detector:** Analyzes liquidity risks and warns users.
+
+### 🛡 Infrastructure
+*   **Supabase Database:** Persistent user tracking (PostgreSQL).
+*   **Fail-Safe Mode:** Ensures payments work even if DB lags.
+*   **Keep-Alive:** Integrated Flask server for 24/7 uptime on Render.
+
+---
+
+## 🔗 Connect with the Developer
+
+*   **Project Lead:** Max (IceReign)
+*   **GitHub:** [IceReign-MEXT](https://github.com/IceReign-MEXT)
+*   **X (Twitter):** [@IceVanguar](https://x.com/IceVanguar)
+*   **Telegram Channel:** [ICEGODS ICEDEVILS](https://t.me/ICEGODSICEDEVILS)
+*   **Contact:** @RobertSmithETH
+
+---
+
+## 🛠 Deployment
+
+1.  **Clone Repository**
+2.  **Set Environment Variables** (See `.env.example`)
+3.  **Deploy to Render** (Python 3 Runtime)
+
+---
+
+## 🤝 Support the Development
+
+If this tool helps you generate revenue, support the continued development of the ChainPilot Ecosystem.
+
+**ETH / ERC20:** `0x20d2708acd360cd0fd416766802e055295470fc1`
+
+*(C) 2026 IceReign-MEXT. All Rights Reserved.*
+
