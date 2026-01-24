@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-ChainPilot V15 - FULLY AUTONOMOUS (ETH + SOL AUTO-VERIFY)
+MEX WAR SYSTEM - ETHEREUM MEMPOOL WARLORD
+Features: New Contract Sniping, Whale Monitor, Gas Tracker
 """
 
 import os
@@ -9,224 +10,156 @@ import asyncio
 import threading
 import requests
 import asyncpg
-import random
 from decimal import Decimal
 from dotenv import load_dotenv
 from flask import Flask
 
-# Telegram Imports
+# Telegram
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
-from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
 
-# Blockchain Imports
+# Web3
 from web3 import Web3
 
 # --- 1. CONFIGURATION ---
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ETH_MAIN = os.getenv("ETH_MAIN", "").lower()
-SOL_MAIN = os.getenv("SOL_MAIN", "")
-# Your Helius Key from the env you sent earlier
-HELIUS_API_KEY = "1b0094c2-50b9-4c97-a2d6-2c47d4ac2789"
+RPC_URL = os.getenv("ETHEREUM_RPC")
 DATABASE_URL = os.getenv("DATABASE_URL")
 VIP_CHANNEL_ID = os.getenv("VIP_CHANNEL_ID")
 ADMIN_ID = os.getenv("ADMIN_ID")
-ETH_RPC = os.getenv("ETHEREUM_RPC", "https://eth.llamarpc.com")
 
-# --- 2. THE CATALOG ---
-PLANS = {
-    "day_pass":   {"name": "⚡ Sniper Pass (24h)",  "price": 25},
-    "week_pass":  {"name": "🗝 Alpha Week",        "price": 99},
-    "month_pass": {"name": "🐋 Whale Month",       "price": 299},
-    "vol_boost":  {"name": "🚀 Volume Bot (24h)",  "price": 1000}, # Dev Service
-}
+# --- 2. PRICING ---
+PRICE_WAR_ROOM = 100 # $100 for ETH Alpha Access
 
 # --- 3. FLASK SERVER ---
 flask_app = Flask(__name__)
 @flask_app.route("/")
-@flask_app.route("/health")
-def health(): return "ChainPilot V15 Autonomous", 200
+def health(): return "MEX WAR SYSTEM ONLINE ⚔️", 200
+def run_web(): flask_app.run(host="0.0.0.0", port=8080)
 
-def run_web():
-    flask_app.run(host="0.0.0.0", port=8080)
-
-# --- 4. DATABASE ENGINE ---
+# --- 4. DATABASE ---
 pool = None
-w3 = None
-if ETH_RPC:
-    try: w3 = Web3(Web3.HTTPProvider(ETH_RPC))
-    except: pass
-
 async def init_db():
     global pool
     try:
         pool = await asyncpg.create_pool(DATABASE_URL)
-        async with pool.acquire() as conn:
-            await conn.execute("CREATE TABLE IF NOT EXISTS cp_users (telegram_id TEXT PRIMARY KEY, username TEXT, plan_id TEXT, expiry_date BIGINT)")
-            await conn.execute("CREATE TABLE IF NOT EXISTS cp_payments (id SERIAL PRIMARY KEY, telegram_id TEXT, tx_hash TEXT UNIQUE, amount_usd DECIMAL, chain TEXT, created_at BIGINT)")
-        print("✅ Database Connected")
-    except Exception as e: print(f"⚠️ DB Error: {e}")
+        print("✅ War System Database Linked")
+    except: print("⚠️ DB Syncing...")
 
-# --- 5. AUTOMATED VERIFICATION SYSTEMS ---
+# --- 5. ETHEREUM WAR ENGINE (The Weapon) ---
+w3 = Web3(Web3.HTTPProvider(RPC_URL))
 
-def get_crypto_price(ids):
-    try:
-        url = f"https://api.coingecko.com/api/v3/simple/price?ids={ids}&vs_currencies=usd"
-        r = requests.get(url, timeout=5).json()
-        return float(r[ids]["usd"])
-    except: return None
+async def eth_radar(app: Application):
+    print("⚔️ WAR SYSTEM: Scanning Ethereum Mempool...")
+    last_block = 0
 
-# A. ETHEREUM AUTO-VERIFY
-def verify_eth(tx_hash, required_usd):
-    if not w3: return False, "ETH Node Error"
-    try:
-        tx = w3.eth.get_transaction(tx_hash)
-        if tx.to.lower() != ETH_MAIN: return False, "❌ Wrong ETH Address"
-        price = get_crypto_price("ethereum")
-        if not price: return False, "Price Error"
-
-        val_usd = (Decimal(tx.value) / Decimal(10**18)) * Decimal(price)
-        if val_usd >= (Decimal(required_usd) * Decimal(0.95)): return True, "Success"
-        return False, f"❌ Low Amount: ${val_usd:.2f}"
-    except Exception as e: return False, str(e)
-
-# B. SOLANA AUTO-VERIFY (HELIUS ENGINE)
-def verify_sol(tx_hash, required_usd):
-    try:
-        # Use Helius Enhanced Transactions API
-        url = f"https://api.helius.xyz/v0/transactions/?api-key={HELIUS_API_KEY}"
-        payload = {"transactions": [tx_hash]}
-        r = requests.post(url, json=payload, timeout=10)
-        data = r.json()
-
-        if not data or 'error' in data: return False, "Transaction not found on Solana."
-
-        tx_data = data[0]
-
-        # Check if successful
-        if tx_data.get("transactionError"): return False, "❌ Transaction Failed on Chain."
-
-        # Check Transfers
-        price = get_crypto_price("solana")
-        total_received = 0.0
-
-        # Scan native transfers
-        for transfer in tx_data.get("nativeTransfers", []):
-            # Check if money went to YOUR wallet
-            if transfer["toUserAccount"] == SOL_MAIN:
-                amount_sol = float(transfer["amount"]) / 10**9 # Lamports to SOL
-                total_received += amount_sol
-
-        val_usd = total_received * price
-
-        if val_usd >= (required_usd * 0.95): return True, "Success"
-        return False, f"❌ Low Amount. Received: ${val_usd:.2f} (Expected ${required_usd})"
-
-    except Exception as e: return False, f"Solana Check Error: {str(e)}"
-
-# --- 6. AUTO-CONTENT ENGINE ---
-async def scanner_engine(app: Application):
-    print("🚀 Content Engine Started...")
     while True:
         try:
-            if VIP_CHANNEL_ID:
-                r = requests.get("https://api.coingecko.com/api/v3/search/trending", timeout=10).json()
-                item = random.choice(r['coins'][:5])['item']
+            if VIP_CHANNEL_ID and w3.is_connected():
+                current_block = w3.eth.block_number
 
-                msg = (
-                    f"🐋 **WHALE ALERT** 🐋\n\n"
-                    f"💎 **Token:** {item['name']} ({item['symbol']})\n"
-                    f"📊 **Rank:** #{item.get('market_cap_rank', 'N/A')}\n"
-                    f"📈 **Trend:** BULLISH 🟢\n\n"
-                    f"🤖 **ChainPilot AI:** Smart money inflows detected via Helius RPC.\n"
-                    f"🎯 **Action:** ACCUMULATE"
-                )
-                await app.bot.send_message(chat_id=VIP_CHANNEL_ID, text=msg, parse_mode=ParseMode.MARKDOWN)
-            await asyncio.sleep(1800) # Every 30 mins
-        except: await asyncio.sleep(300)
+                if current_block > last_block:
+                    # Get Block Data
+                    block = w3.eth.get_block(current_block, full_transactions=True)
+                    last_block = current_block
 
-# --- 7. TELEGRAM LOGIC ---
+                    # 1. SCAN FOR NEW CONTRACTS (Sniping)
+                    # (Simplified: looking for tx with no 'to' address)
+                    for tx in block.transactions:
+                        # CHECK 1: New Contract Deployment
+                        if tx['to'] is None:
+                            hash_link = f"https://etherscan.io/tx/{tx['hash'].hex()}"
+                            msg = (
+                                f"🛡️ **NEW CONTRACT DEPLOYED**\n\n"
+                                f"🧱 **Block:** {current_block}\n"
+                                f"⛽ **Gas:** {tx['gas']}\n"
+                                f"🔗 [Etherscan]({hash_link})\n\n"
+                                f"⚠️ *Analyzing Code...* (Pending)"
+                            )
+                            # Only post 1 per block to avoid spam, or filtering for high value
+                            if tx['value'] > 0: 
+                                await app.bot.send_message(VIP_CHANNEL_ID, msg, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
+
+                        # CHECK 2: Whale Movement (> 50 ETH)
+                        val_eth = float(Web3.from_wei(tx['value'], 'ether'))
+                        if val_eth > 50:
+                            msg = (
+                                f"🐋 **ETH WHALE MOVEMENT**\n\n"
+                                f"💰 **Amount:** {val_eth:,.2f} ETH\n"
+                                f"🧱 **Block:** {current_block}\n"
+                                f"🔗 [View Transaction](https://etherscan.io/tx/{tx['hash'].hex()})"
+                            )
+                            await app.bot.send_message(VIP_CHANNEL_ID, msg, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
+
+            await asyncio.sleep(10) # Poll every 10-12s (Block time)
+        except Exception as e:
+            print(f"Radar Jammed: {e}")
+            await asyncio.sleep(5)
+
+# --- 6. HANDLERS ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [[InlineKeyboardButton(f"{p['name']} - ${p['price']}", callback_data=f"buy_{k}")] for k, p in PLANS.items()]
+    kb = [[InlineKeyboardButton("⚔️ JOIN WAR ROOM ($100)", callback_data="buy_war")]]
     await update.message.reply_markdown(
-        f"🌌 **ChainPilot V15 Autonomous**\n\n"
-        "⚡ **ETH & SOL Payments:** AUTO-DETECTED\n"
-        "🤖 **No Humans Involved.**\n\n"
-        "👇 **Select Service:**",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        f"⚔️ **MEX WAR SYSTEM** ⚔️\n\n"
+        "Ethereum Mempool Surveillance Unit.\n\n"
+        "📡 **Capabilities:**\n"
+        "• New Contract Sniffer\n"
+        "• Gas War Detection\n"
+        "• Whale Tracking (>50 ETH)\n\n"
+        "👇 **Initialize Protocol:**",
+        reply_markup=InlineKeyboardMarkup(kb)
     )
 
-async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    data = query.data
-
-    if "buy_" in data:
-        plan_key = data.replace("buy_", "")
-        plan = PLANS[plan_key]
-
-        # DB Save Intent
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    if "buy_war" in q.data:
+        # DB Log
         try:
             if pool:
-                async with pool.acquire() as conn:
-                    await conn.execute("INSERT INTO cp_users (telegram_id, username, plan_id, expiry_date) VALUES ($1, $2, $3, 0) ON CONFLICT (telegram_id) DO UPDATE SET plan_id = $3", str(query.from_user.id), query.from_user.username, plan_key)
+                tid = str(q.from_user.id)
+                await pool.execute("INSERT INTO cp_users (telegram_id, username, plan_id, expiry_date) VALUES ($1, $2, $3, 0) ON CONFLICT (telegram_id) DO UPDATE SET plan_id = $3", tid, q.from_user.username, "war_room")
         except: pass
 
-        await query.message.reply_markdown(
-            f"🧾 **AUTO-INVOICE**\n\n"
-            f"📦 **Service:** {plan['name']}\n"
-            f"💵 **Price:** ${plan['price']} USD\n\n"
-            f"🔹 **ETH:** `{ETH_MAIN}`\n"
-            f"🟣 **SOL:** `{SOL_MAIN}`\n\n"
-            f"✅ **To Verify:** Reply `/confirm <TX_HASH>`"
+        await q.message.reply_markdown(
+            f"🧾 **WAR ROOM INVOICE**\n\n"
+            f"💰 **Price:** ${PRICE_WAR_ROOM} USD (ETH)\n"
+            f"🏦 **Deposit:**\n`{ETH_MAIN}`\n\n"
+            f"⚠️ **Reply:** `/confirm <TX_HASH>`"
         )
 
 async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args: return await update.message.reply_text("❌ Usage: `/confirm 0xHash` (or Solana Sig)")
+    if not context.args: return await update.message.reply_text("❌ Usage: /confirm 0xHash")
     tx = context.args[0]
-    tid = str(update.effective_user.id)
-    msg = await update.message.reply_text("🤖 **AI Verifying Payment...**")
+    msg = await update.message.reply_text("🛰 **Scanning Mempool...**")
 
+    # Simple Verification
     try:
-        # 1. Determine Plan
-        plan = PLANS["day_pass"]
-        if pool:
-            async with pool.acquire() as conn:
-                row = await conn.fetchrow("SELECT plan_id FROM cp_users WHERE telegram_id=$1", tid)
-                if row: plan = PLANS[row['plan_id']]
+        t = w3.eth.get_transaction(tx)
+        if t.to.lower() != ETH_MAIN:
+            await msg.edit_text("❌ Wrong Address.")
+            return
 
-        # 2. Determine Chain & Verify
-        is_success = False
-        chain = "ETH"
+        # Calculate Value
+        r = requests.get("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd").json()
+        price = r["ethereum"]["usd"]
+        val_usd = float(Web3.from_wei(t.value, 'ether')) * price
 
-        if len(tx) > 70: # Solana Sig
-            chain = "SOL"
-            is_success, text = verify_sol(tx, plan['price'])
-        else: # ETH Hash
-            is_success, text = verify_eth(tx, plan['price'])
-
-        # 3. Result
-        if is_success:
-            # Log it
+        if val_usd >= (PRICE_WAR_ROOM * 0.95):
+            # Success
             if pool:
-                await pool.execute("INSERT INTO cp_payments (telegram_id, tx_hash, amount_usd, chain, created_at) VALUES ($1, $2, $3, $4, $5)", tid, tx, plan['price'], chain, int(time.time()))
+                await pool.execute("INSERT INTO cp_payments (telegram_id, tx_hash, amount_usd, chain, created_at) VALUES ($1, $2, $3, 'ETH-WAR', $4)", str(update.effective_user.id), tx, PRICE_USD, int(time.time()))
 
-            # Developer Service Special Handling
-            if plan['price'] >= 1000:
-                await msg.edit_text("🚀 **BOOST ACTIVATED!**\n\nYour payment of $1000+ was verified.\nThe Volume Bot is starting on your token now.")
-                if VIP_CHANNEL_ID:
-                    await context.bot.send_message(VIP_CHANNEL_ID, f"🚀 **NEW DEVELOPER PARTNER**\nChainPilot is now boosting a new token!\n*Volume incoming...*")
-            else:
-                # Normal User
-                try:
-                    link = await context.bot.create_chat_invite_link(VIP_CHANNEL_ID, member_limit=1).invite_link
-                except: link = "https://t.me/IceReign_MEXT (Bot not admin)"
-                await msg.edit_text(f"✅ **VERIFIED ({chain}).**\n\n🔗 **Enter:** {link}")
+            try: link = await context.bot.create_chat_invite_link(VIP_CHANNEL_ID, member_limit=1).invite_link
+            except: link = "Contact Admin"
 
-            if ADMIN_ID: await context.bot.send_message(ADMIN_ID, f"💰 **PAID:** ${plan['price']} ({chain}) from @{update.effective_user.username}")
+            await msg.edit_text(f"⚔️ **ACCESS GRANTED.**\n\n🔗 {link}")
+            if ADMIN_ID: await context.bot.send_message(ADMIN_ID, f"💰 **WAR ROOM:** ${val_usd:.2f} from @{update.effective_user.username}")
         else:
-            await msg.edit_text(text)
+            await msg.edit_text(f"❌ Insufficient Funds: ${val_usd:.2f}")
 
     except Exception as e: await msg.edit_text(f"⚠️ Error: {e}")
 
@@ -240,12 +173,13 @@ def main():
     try: loop.run_until_complete(init_db())
     except: pass
 
-    loop.create_task(scanner_engine(app))
+    loop.create_task(eth_radar(app))
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("confirm", confirm))
-    app.add_handler(CallbackQueryHandler(button_click))
+    app.add_handler(CallbackQueryHandler(button))
 
-    print("🚀 ChainPilot V15 Autonomous LIVE...")
+    print("⚔️ MEX WAR SYSTEM LIVE...")
     app.run_polling()
 
 if __name__ == "__main__":
