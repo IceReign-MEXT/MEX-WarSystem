@@ -26,7 +26,7 @@ from web3 import Web3
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ETH_MAIN = os.getenv("ETH_MAIN", "").lower()
-RPC_URL = os.getenv("ETHEREUM_RPC")
+RPC_URL = os.getenv("ETHEREUM_RPC", "https://eth.llamarpc.com")
 DATABASE_URL = os.getenv("DATABASE_URL")
 VIP_CHANNEL_ID = os.getenv("VIP_CHANNEL_ID")
 ADMIN_ID = os.getenv("ADMIN_ID")
@@ -54,7 +54,10 @@ async def init_db():
     except: print("⚠️ DB Syncing...")
 
 # --- 5. WAR ENGINE (The Content Generator) ---
-w3 = Web3(Web3.HTTPProvider(RPC_URL))
+w3 = None
+if RPC_URL:
+    try: w3 = Web3(Web3.HTTPProvider(RPC_URL))
+    except: pass
 
 async def eth_radar(app: Application):
     print("⚔️ WAR SYSTEM: Scanning Mempool...")
@@ -62,7 +65,7 @@ async def eth_radar(app: Application):
 
     while True:
         try:
-            if VIP_CHANNEL_ID and w3.is_connected():
+            if VIP_CHANNEL_ID and w3 and w3.is_connected():
                 current_block = w3.eth.block_number
 
                 if current_block > last_block:
@@ -86,7 +89,7 @@ async def eth_radar(app: Application):
                                     await app.bot.send_photo(VIP_CHANNEL_ID, photo=IMAGES["contract"], caption=caption, parse_mode=ParseMode.MARKDOWN)
                                 except: pass
 
-                        # 2. WHALE MOVEMENT (> 10 ETH) - Lowered for more activity
+                        # 2. WHALE MOVEMENT (> 10 ETH)
                         val_eth = float(Web3.from_wei(tx['value'], 'ether'))
                         if val_eth > 10:
                             caption = (
