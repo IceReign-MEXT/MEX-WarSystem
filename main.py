@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-MEX WAR SYSTEM V2 - VISUAL WARLORD
-Features: Image Alerts, High Frequency Scans, Auto-Payment
+MEX WAR SYSTEM V40 - THE SILENT ASSASSIN
+Features: Smart Filtering, Gas Tracking, Anti-Spam Logic
 """
 
 import os
@@ -26,22 +26,22 @@ from web3 import Web3
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ETH_MAIN = os.getenv("ETH_MAIN", "").lower()
-RPC_URL = os.getenv("ETHEREUM_RPC", "https://eth.llamarpc.com")
+RPC_URL = os.getenv("ETHEREUM_RPC")
 DATABASE_URL = os.getenv("DATABASE_URL")
 VIP_CHANNEL_ID = os.getenv("VIP_CHANNEL_ID")
 ADMIN_ID = os.getenv("ADMIN_ID")
 
-# --- 2. ASSETS (The Professional Look) ---
+# --- 2. ASSETS ---
 IMAGES = {
     "whale": "https://cdn.pixabay.com/photo/2020/08/09/14/25/business-5475661_1280.jpg",
     "contract": "https://cdn.pixabay.com/photo/2016/11/27/21/42/stock-1863880_1280.jpg",
-    "war": "https://cdn.pixabay.com/photo/2017/08/30/01/05/milky-way-2695569_1280.jpg"
+    "gas": "https://cdn.pixabay.com/photo/2017/08/30/01/05/milky-way-2695569_1280.jpg"
 }
 
 # --- 3. FLASK SERVER ---
 flask_app = Flask(__name__)
 @flask_app.route("/")
-def health(): return "WAR SYSTEM VISUALS ACTIVE ⚔️", 200
+def health(): return "WAR SYSTEM V40 ONLINE", 200
 def run_web(): flask_app.run(host="0.0.0.0", port=8080)
 
 # --- 4. DATABASE ---
@@ -51,75 +51,85 @@ async def init_db():
     try:
         pool = await asyncpg.create_pool(DATABASE_URL)
         print("✅ War DB Linked")
-    except: print("⚠️ DB Syncing...")
-
-# --- 5. WAR ENGINE (The Content Generator) ---
-w3 = None
-if RPC_URL:
-    try: w3 = Web3(Web3.HTTPProvider(RPC_URL))
     except: pass
 
+# --- 5. WAR ENGINE (SMART FILTERS) ---
+w3 = Web3(Web3.HTTPProvider(RPC_URL))
+
 async def eth_radar(app: Application):
-    print("⚔️ WAR SYSTEM: Scanning Mempool...")
+    print("⚔️ WAR SYSTEM: Scanning for HIGH VALUE targets...")
     last_block = 0
 
     while True:
         try:
-            if VIP_CHANNEL_ID and w3 and w3.is_connected():
+            if VIP_CHANNEL_ID and w3.is_connected():
                 current_block = w3.eth.block_number
 
+                # Check only if we have a new block
                 if current_block > last_block:
                     block = w3.eth.get_block(current_block, full_transactions=True)
                     last_block = current_block
 
-                    for tx in block.transactions:
-                        # 1. NEW CONTRACT (Sniper Alert)
-                        if tx['to'] is None:
-                            hash_link = f"https://etherscan.io/tx/{tx['hash'].hex()}"
-                            caption = (
-                                f"🛡️ **NEW CONTRACT DEPLOYED**\n\n"
-                                f"🧱 **Block:** {current_block}\n"
-                                f"⛽ **Gas:** {tx['gas']}\n"
-                                f"🔗 [View on Etherscan]({hash_link})\n\n"
-                                f"⚠️ *MexWarSystem Analysis: Pending Safety Scan...*"
-                            )
-                            # Post 1 per block max to avoid flooding
-                            if random.randint(1,5) == 1:
-                                try:
-                                    await app.bot.send_photo(VIP_CHANNEL_ID, photo=IMAGES["contract"], caption=caption, parse_mode=ParseMode.MARKDOWN)
-                                except: pass
+                    # 1. GAS TRACKER (Network Health)
+                    # If Gas spikes > 50 Gwei, alert the channel (Volatility incoming)
+                    base_fee = block.get('baseFeePerGas', 0) / 10**9
+                    if base_fee > 50:
+                        msg = f"⛽ **HIGH GAS ALERT: {base_fee:.0f} Gwei**\nNetwork congestion detected. Volatility expected."
+                        try: await app.bot.send_message(VIP_CHANNEL_ID, msg)
+                        except: pass
 
-                        # 2. WHALE MOVEMENT (> 10 ETH)
+                    # 2. WHALE & CONTRACT SCANNER
+                    for tx in block.transactions:
+                        # CONTRACT DEPLOYMENT (The Sniper Signal)
+                        if tx['to'] is None:
+                            # Only alert if it spent significant gas (avoids spam contracts)
+                            if tx['gas'] > 150000:
+                                hash_link = f"https://etherscan.io/tx/{tx['hash'].hex()}"
+                                caption = (
+                                    f"🛡️ **NEW CONTRACT DEPLOYED**\n\n"
+                                    f"🧱 **Block:** {current_block}\n"
+                                    f"⛽ **Gas Used:** {tx['gas']}\n"
+                                    f"🔗 [View on Etherscan]({hash_link})\n\n"
+                                    f"⚠️ *Safety Scan Pending...*"
+                                )
+                                # Anti-Spam: 10% chance to post or 2 minute delay
+                                if random.randint(1, 10) == 5:
+                                    try: await app.bot.send_photo(VIP_CHANNEL_ID, photo=IMAGES["contract"], caption=caption, parse_mode=ParseMode.MARKDOWN)
+                                    except: pass
+                                    await asyncio.sleep(60) # Wait 1 min before next post
+
+                        # WHALE MOVEMENT (RAISED LIMIT TO 50 ETH)
+                        # We only want BIG moves ($150k+). Small moves are noise.
                         val_eth = float(Web3.from_wei(tx['value'], 'ether'))
-                        if val_eth > 10:
+                        if val_eth > 50:
                             caption = (
-                                f"🐋 **ETH WHALE MOVEMENT**\n\n"
+                                f"🐋 **MEGA WHALE MOVE**\n\n"
                                 f"💰 **Amount:** {val_eth:,.2f} ETH\n"
-                                f"🧱 **Block:** {current_block}\n\n"
-                                f"🤖 **AI Tracking:** Large capital flow detected.\n"
+                                f"🧱 **Block:** {current_block}\n"
+                                f"🤖 **AI Tracking:** Institutional Flow Detected.\n"
                                 f"🔗 [View Transaction](https://etherscan.io/tx/{tx['hash'].hex()})"
                             )
-                            try:
-                                await app.bot.send_photo(VIP_CHANNEL_ID, photo=IMAGES["whale"], caption=caption, parse_mode=ParseMode.MARKDOWN)
+                            try: await app.bot.send_photo(VIP_CHANNEL_ID, photo=IMAGES["whale"], caption=caption, parse_mode=ParseMode.MARKDOWN)
                             except: pass
+                            await asyncio.sleep(300) # Wait 5 mins before next whale alert
 
-            await asyncio.sleep(10)
+            await asyncio.sleep(12) # Check every block (12s)
         except Exception as e:
             print(f"Radar Error: {e}")
-            await asyncio.sleep(5)
+            await asyncio.sleep(10)
 
-# --- 6. TELEGRAM HANDLERS ---
+# --- 6. HANDLERS ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb = [[InlineKeyboardButton("⚔️ JOIN WAR ROOM ($100)", callback_data="buy_war")]]
     await update.message.reply_photo(
-        photo=IMAGES["war"],
+        photo=IMAGES["gas"],
         caption=(
-            f"⚔️ **MEX WAR SYSTEM V2** ⚔️\n\n"
+            f"⚔️ **MEX WAR SYSTEM V40** ⚔️\n\n"
             "Ethereum Mempool Surveillance Unit.\n\n"
-            "📡 **Capabilities:**\n"
-            "• New Contract Sniffer\n"
-            "• Gas War Detection\n"
-            "• Whale Tracking\n\n"
+            "📡 **Filters:**\n"
+            "• Ignore Noise < 50 ETH\n"
+            "• Track Gas Spikes\n"
+            "• Sniper Contract Deploys\n\n"
             "👇 **Initialize Protocol:**"
         ),
         reply_markup=InlineKeyboardMarkup(kb),
@@ -159,7 +169,7 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         price = requests.get("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd").json()["ethereum"]["usd"]
         val_usd = float(Web3.from_wei(t.value, 'ether')) * price
 
-        if val_usd >= 95: # $95 tolerance
+        if val_usd >= 95:
             if pool:
                 await pool.execute("INSERT INTO cp_payments (telegram_id, tx_hash, amount_usd, chain, created_at) VALUES ($1, $2, $3, 'ETH-WAR', $4)", str(update.effective_user.id), tx, 100, int(time.time()))
 
@@ -189,7 +199,7 @@ def main():
     app.add_handler(CommandHandler("confirm", confirm))
     app.add_handler(CallbackQueryHandler(button))
 
-    print("⚔️ MEX WAR SYSTEM LIVE...")
+    print("⚔️ MEX WAR SYSTEM V40 LIVE...")
     app.run_polling()
 
 if __name__ == "__main__":
