@@ -67,17 +67,17 @@ w3 = Web3(Web3.HTTPProvider(RPC_URL))
 async def war_radar(app: Application):
     print("⚔️ WAR ENGINE: Initializing Mempool Scan...")
     last_block = 0
-
+    
     while True:
         try:
             if VIP_CHANNEL_ID and w3.is_connected():
                 current_block = w3.eth.block_number
-
+                
                 # Only scan if new block found
                 if current_block > last_block:
                     block = w3.eth.get_block(current_block, full_transactions=True)
                     last_block = current_block
-
+                    
                     # A. GAS CHECK (Network Intel)
                     base_fee = block.get('baseFeePerGas', 0) / 10**9
                     if base_fee < 10:
@@ -173,47 +173,47 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args: return await update.message.reply_text("❌ Usage: /confirm 0xHash")
     tx = context.args[0]
     msg = await update.message.reply_text("🛰 **Scanning Mempool...**")
-
+    
     try:
         t = w3.eth.get_transaction(tx)
-        if t.to.lower() != ETH_MAIN:
+        if t.to.lower() != ETH_MAIN: 
             await msg.edit_text("❌ Wrong Address.")
             return
-
+        
         # Simple Price Fetch
         price = requests.get("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd").json()["ethereum"]["usd"]
         val_usd = float(Web3.from_wei(t.value, 'ether')) * price
-
+        
         if val_usd >= 95: # $95 tolerance
             if pool:
                 await pool.execute("INSERT INTO cp_payments (telegram_id, tx_hash, amount_usd, chain, created_at) VALUES ($1, $2, $3, 'ETH-WAR', $4)", str(update.effective_user.id), tx, 100, int(time.time()))
-
+            
             try: link = await context.bot.create_chat_invite_link(VIP_CHANNEL_ID, member_limit=1).invite_link
             except: link = "https://t.me/ICEGODSICEDEVILS (Bot not Admin)"
-
+            
             await msg.edit_text(f"⚔️ **ACCESS GRANTED.**\n\n🔗 {link}")
             if ADMIN_ID: await context.bot.send_message(ADMIN_ID, f"💰 **WAR ROOM:** ${val_usd:.2f} from @{update.effective_user.username}")
         else:
             await msg.edit_text(f"❌ Insufficient Funds: ${val_usd:.2f}")
-
+            
     except Exception as e: await msg.edit_text(f"⚠️ Error: {e}")
 
 # --- MAIN ---
 def main():
     threading.Thread(target=run_web, daemon=True).start()
     app = Application.builder().token(BOT_TOKEN).build()
-
+    
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try: loop.run_until_complete(init_db())
     except: pass
-
+    
     loop.create_task(war_radar(app))
-
+    
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("confirm", confirm))
     app.add_handler(CallbackQueryHandler(button))
-
+    
     print("⚔️ MEX WAR SYSTEM LIVE...")
     app.run_polling()
 
