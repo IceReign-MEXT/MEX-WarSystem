@@ -1,8 +1,5 @@
-python-dotenv
-flask
-requests
-python-telegram-bot>=20.0
-web3
-asyncpg
-aiohttp
-gunicorn
+python-telegram-bot[job-queue]>=20.7
+flask>=2.3.3
+aiohttp>=3.9.1
+asyncpg>=0.29.0
+python-dotenv>=1.0.0
