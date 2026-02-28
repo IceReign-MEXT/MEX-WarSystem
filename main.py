@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 ═══════════════════════════════════════════════════════════════════════
-MEX-WARSYSTEM V2.6 - EMERGENCY FIX (Safe Markdown)
+MEX-WARSYSTEM V3.0 - THE REAL MONEY MACHINE
+Features: Fake Social Proof, Scarcity, Leaderboards, FOMO Engineering
 ═══════════════════════════════════════════════════════════════════════
 """
 
@@ -11,7 +12,7 @@ import threading
 import aiohttp
 import logging
 import asyncpg
-import re
+import random
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler
@@ -45,15 +46,52 @@ def run_loop():
 
 threading.Thread(target=run_loop, daemon=True).start()
 
-# SAFE MARKDOWN ESCAPE
-def escape_md(text):
-    """Escape markdown special characters"""
-    if not text:
-        return ""
-    # Remove or escape problematic chars
-    text = str(text)
-    text = text.replace('*', '').replace('_', '').replace('`', '').replace('[', '').replace(']', '')
-    return text
+# ═══════════════════════════════════════════════════════════════════════
+# FAKE SOCIAL PROOF ENGINE
+# ═══════════════════════════════════════════════════════════════════════
+
+class SocialProof:
+    FAKE_USERS = [
+        "WhaleHunter", "CryptoKing", "SolanaMaxi", "DeFiDegen", "TokenSniper",
+        "MoonShot", "AlphaCaller", "ChainChaser", "DipBuyer", "FomoTrader",
+        "GemFinder", "100xHunter", "WalletWatcher", "RugDetective", "LaunchSniper",
+        "SolWhale", "CryptoQueen", "DeFiKing", "NFTFlipper", "AlphaWolf"
+    ]
+    
+    PLANS = ["VIP", "Whale Tracker", "Premium", "Token Boost"]
+    
+    @staticmethod
+    def recent_sale():
+        user = random.choice(SocialProof.FAKE_USERS)
+        plan = random.choice(SocialProof.PLANS)
+        time = random.choice(["just now", "1 min ago", "2 mins ago", "3 mins ago", "5 mins ago"])
+        return f"🔥 {user} bought {plan} {time}"
+    
+    @staticmethod
+    def online_count():
+        return random.randint(23, 67)
+    
+    @staticmethod
+    def today_stats():
+        return {
+            'new_users': random.randint(12, 34),
+            'sales': random.randint(5, 18),
+            'revenue': round(random.uniform(8.5, 25.5), 2)
+        }
+    
+    @staticmethod
+    def spots_left():
+        return random.randint(3, 12)
+    
+    @staticmethod
+    def price_increase_time():
+        hours = random.randint(2, 8)
+        mins = random.randint(10, 59)
+        return f"{hours}h {mins}m"
+
+# ═══════════════════════════════════════════════════════════════════════
+# DATABASE
+# ═══════════════════════════════════════════════════════════════════════
 
 async def init_db():
     global db_pool
@@ -62,8 +100,33 @@ async def init_db():
     try:
         db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5, command_timeout=30, statement_cache_size=0)
         async with db_pool.acquire() as conn:
-            await conn.execute("CREATE TABLE IF NOT EXISTS users (telegram_id BIGINT PRIMARY KEY, plan_type TEXT DEFAULT 'free', referrals_count INT DEFAULT 0, total_paid DECIMAL(10,4) DEFAULT 0)")
-            await conn.execute("CREATE TABLE IF NOT EXISTS payments (id SERIAL PRIMARY KEY, telegram_id BIGINT, amount_sol DECIMAL(10,4), plan_type TEXT, status TEXT DEFAULT 'pending')")
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    telegram_id BIGINT PRIMARY KEY,
+                    username TEXT,
+                    first_name TEXT,
+                    plan_type TEXT DEFAULT 'free',
+                    plan_expires_at TIMESTAMP,
+                    referrals_count INT DEFAULT 0,
+                    referred_by BIGINT,
+                    total_paid DECIMAL(10,4) DEFAULT 0,
+                    streak_days INT DEFAULT 0,
+                    last_checkin TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    last_active TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS payments (
+                    id SERIAL PRIMARY KEY,
+                    telegram_id BIGINT,
+                    amount_sol DECIMAL(10,4),
+                    plan_type TEXT,
+                    status TEXT DEFAULT 'pending',
+                    tx_hash TEXT,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
         return True
     except Exception as e:
         logger.error(f"DB error: {e}")
@@ -78,58 +141,32 @@ async def get_user(tid):
             if not row:
                 await conn.execute("INSERT INTO users (telegram_id) VALUES ($1) ON CONFLICT DO NOTHING", tid)
                 row = await conn.fetchrow("SELECT * FROM users WHERE telegram_id = $1", tid)
+            await conn.execute("UPDATE users SET last_active = NOW() WHERE telegram_id = $1", tid)
             return dict(row) if row else None
     except:
         return None
 
-async def analyze_token(token_address, chain="solana"):
-    try:
-        async with aiohttp.ClientSession() as session:
-            url = f"https://api.dexscreener.com/latest/dex/tokens/{token_address}"
-            async with session.get(url, timeout=10) as resp:
-                if resp.status != 200:
-                    return None
-                data = await resp.json()
-                if not data.get('pairs'):
-                    return None
-                
-                pair = data['pairs'][0]
-                return {
-                    'symbol': escape_md(pair['baseToken']['symbol']),
-                    'name': escape_md(pair['baseToken']['name']),
-                    'price': float(pair['priceUsd']),
-                    'liquidity': pair.get('liquidity', {}).get('usd', 0),
-                    'volume_24h': pair.get('volume', {}).get('h24', 0),
-                    'change_24h': pair.get('priceChange', {}).get('h24', 0),
-                    'url': pair['url'],
-                    'chain': chain
-                }
-    except Exception as e:
-        logger.error(f"Analysis error: {e}")
-        return None
+# ═══════════════════════════════════════════════════════════════════════
+# SIGNALS
+# ═══════════════════════════════════════════════════════════════════════
 
 async def post_signals():
-    """Post with SAFE formatting (no markdown)"""
     try:
-        # Simple scan
         async with aiohttp.ClientSession() as session:
             url = "https://api.dexscreener.com/token-profiles/latest/v1"
             async with session.get(url, timeout=10) as resp:
                 if resp.status != 200:
                     return
-                
                 data = await resp.json()
                 if not data:
                     return
                 
-                # Get first token
                 profile = data[0]
-                token_addr = profile.get('tokenAddress')
-                if not token_addr:
+                addr = profile.get('tokenAddress')
+                if not addr:
                     return
                 
-                # Get details
-                detail_url = f"https://api.dexscreener.com/latest/dex/tokens/{token_addr}"
+                detail_url = f"https://api.dexscreener.com/latest/dex/tokens/{addr}"
                 async with session.get(detail_url, timeout=5) as dresp:
                     if dresp.status != 200:
                         return
@@ -139,12 +176,14 @@ async def post_signals():
                         return
                     
                     pair = details['pairs'][0]
-                    symbol = escape_md(pair['baseToken']['symbol'])
-                    name = escape_md(pair['baseToken']['name'])
+                    symbol = pair['baseToken']['symbol'].replace('*', '').replace('_', '')
+                    name = pair['baseToken']['name'].replace('*', '').replace('_', '')
                     price = float(pair['priceUsd'])
                     liquidity = pair.get('liquidity', {}).get('usd', 0)
                     
-                    # PLAIN TEXT message (no markdown)
+                    recent = SocialProof.recent_sale()
+                    online = SocialProof.online_count()
+                    
                     msg = f"""🚀 NEW LAUNCH DETECTED
 
 💎 {name} (${symbol})
@@ -153,9 +192,11 @@ async def post_signals():
 
 📊 Chart: {pair['url']}
 
-💎 Get early alerts: @ICEMEXWarSystem_Bot"""
+🔥 {recent}
+👁️ {online} hunters watching now
+
+💎 Get early access: @ICEMEXWarSystem_Bot"""
                     
-                    # Send without markdown
                     await bot_app.bot.send_message(
                         PUBLIC_CHANNEL_ID,
                         msg,
@@ -163,7 +204,6 @@ async def post_signals():
                             [InlineKeyboardButton("Get VIP Access", url="https://t.me/ICEMEXWarSystem_Bot")]
                         ])
                     )
-                    
                     logger.info(f"Posted: {symbol}")
                     
     except Exception as e:
@@ -172,57 +212,138 @@ async def post_signals():
 async def signal_loop():
     while True:
         await post_signals()
-        await asyncio.sleep(600)  # 10 minutes
+        await asyncio.sleep(random.randint(600, 900))
 
-# Handlers
-async def start(update, context):
+# ═══════════════════════════════════════════════════════════════════════
+# HANDLERS
+# ═══════════════════════════════════════════════════════════════════════
+
+async def start(update: Update, context):
     user = update.effective_user
     db_user = await get_user(user.id)
+    
+    # Process referral
+    if context.args and context.args[0].startswith("ref_"):
+        try:
+            referrer_id = int(context.args[0].replace("ref_", ""))
+            if referrer_id != user.id and db_pool:
+                async with db_pool.acquire() as conn:
+                    await conn.execute("UPDATE users SET referrals_count = referrals_count + 1 WHERE telegram_id = $1", referrer_id)
+                    count = await conn.fetchval("SELECT referrals_count FROM users WHERE telegram_id = $1", referrer_id)
+                    if count and count % 3 == 0:
+                        expires = datetime.now() + timedelta(days=2)
+                        await conn.execute("UPDATE users SET plan_type = 'vip', plan_expires_at = $1 WHERE telegram_id = $2", expires, referrer_id)
+                        try:
+                            await context.bot.send_message(referrer_id, "🎉 3 REFERRALS! 2 days FREE VIP activated!")
+                        except:
+                            pass
+        except:
+            pass
+    
     refs = db_user.get('referrals_count', 0) if db_user else 0
     ref_link = f"https://t.me/{context.bot.username}?start=ref_{user.id}"
     
+    recent_sale = SocialProof.recent_sale()
+    online = SocialProof.online_count()
+    stats = SocialProof.today_stats()
+    spots = SocialProof.spots_left()
+    price_time = SocialProof.price_increase_time()
+    
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("💎 Buy VIP (0.5 SOL)", callback_data="buy_vip")],
-        [InlineKeyboardButton("🚀 Promote Token", callback_data="promote")],
-        [InlineKeyboardButton("📊 Stats", callback_data="stats")]
+        [InlineKeyboardButton("💎 BUY VIP (0.5 SOL)", callback_data="buy_vip")],
+        [InlineKeyboardButton("🚀 PROMOTE TOKEN", callback_data="promote")],
+        [InlineKeyboardButton("🏆 LEADERBOARD", callback_data="leaderboard")],
+        [InlineKeyboardButton("📊 CHECK-IN (FREE)", callback_data="checkin")]
     ])
     
-    # SAFE text - no markdown
-    text = f"""👁️ MEX-WARSYSTEM V2.6
+    text = f"""👁️ MEX-WARSYSTEM V3.0
 
 Welcome, {user.first_name}!
 
-🎯 What We Do:
-• Track whale wallets
-• Detect new launches early
-• Token promotion (legal)
-• Risk analysis
+🔥 LIVE ACTIVITY:
+• {online} hunters online now
+• {recent_sale}
+• {stats['sales']} VIPs today ({stats['revenue']} SOL)
 
-🎁 FREE ACCESS:
-Invite 3 friends = 2 days VIP
-Progress: {refs}/3
+🎯 YOUR STATUS:
+• Referrals: {refs}/3 (2 days free per 3)
+• Plan: {db_user.get('plan_type', 'FREE').upper() if db_user else 'FREE'}
 
-💰 PAID TIERS:
-• VIP: 0.5 SOL/month
-• Whale Tracker: 1 SOL
-• Premium: 3 SOL
+⏰ URGENT:
+Only {spots} VIP spots left at 0.5 SOL!
+Price increases in {price_time}!
+
+💰 TIERS:
+• VIP: 0.5 SOL (early alerts)
+• Whale Tracker: 1 SOL (5 wallets)
+• Premium: 3 SOL (everything)
 
 🔗 Your Link:
 {ref_link}
 
-⚡ Share & earn!"""
+⚡ Share to earn free access!"""
     
     await update.message.reply_text(text, reply_markup=keyboard)
 
-async def button(update, context):
+async def button(update: Update, context):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
     
-    if query.data == "stats":
+    if query.data == "leaderboard":
+        text = """🏆 THIS MONTH'S TOP HUNTERS
+
+🥇 WhaleHunter — 47 refs (14 days VIP)
+🥈 CryptoKing — 39 refs (7 days VIP)
+🥉 SolanaMaxi — 31 refs (3 days VIP)
+
+4. AlphaWolf — 28 refs
+5. GemFinder — 25 refs
+
+🎯 You: Climb the ranks!
+Invite friends to win free VIP!"""
+        await query.message.reply_text(text)
+        return
+    
+    if query.data == "checkin":
         user = await get_user(user_id)
-        refs = user.get('referrals_count', 0) if user else 0
-        await query.message.reply_text(f"📊 Stats\n\nReferrals: {refs}/3\nPlan: {user.get('plan_type', 'FREE').upper() if user else 'FREE'}")
+        if not user:
+            return
+        
+        last = user.get('last_checkin')
+        streak = user.get('streak_days', 0)
+        now = datetime.now()
+        
+        if last and (now - last).days < 1:
+            hours = 24 - int((now - last).total_seconds() / 3600)
+            await query.message.reply_text(f"⏰ Already checked in! Next in {hours}h")
+            return
+        
+        if last and (now - last).days == 1:
+            streak += 1
+        else:
+            streak = 1
+        
+        reward = ""
+        if streak == 7:
+            reward = "\n🎁 7 DAY STREAK! 1 day VIP added!"
+            if db_pool:
+                async with db_pool.acquire() as conn:
+                    expires = datetime.now() + timedelta(days=1)
+                    await conn.execute("UPDATE users SET plan_type = 'vip', plan_expires_at = $1 WHERE telegram_id = $2", expires, user_id)
+        elif streak == 30:
+            reward = "\n🔥 30 DAY STREAK! 7 days VIP added!"
+        
+        if db_pool:
+            async with db_pool.acquire() as conn:
+                await conn.execute("UPDATE users SET streak_days = $1, last_checkin = NOW() WHERE telegram_id = $2", streak, user_id)
+        
+        await query.message.reply_text(f"""✅ CHECKED IN!
+
+🔥 Streak: {streak} days
+{reward}
+
+Keep checking in daily!""")
         return
     
     if query.data == "promote":
@@ -230,12 +351,10 @@ async def button(update, context):
 
 📢 Spotlight - 2 SOL
 • Featured post in channel
-• Real chart analysis
-• 1000+ traders see it
+• {SocialProof.online_count()} traders see it
 
 ⚡ VIP Alert - 5 SOL
 • Instant alert to VIP group
-• Early buyers = organic volume
 
 👑 Premium - 10 SOL
 • Channel + VIP group
@@ -243,36 +362,47 @@ async def button(update, context):
 
 To order:
 Send SOL to {SOL_WALLET}
-Then reply: /promo TOKEN_ADDRESS TIER
+Then: /promo TOKEN_ADDRESS TIER
 
 Example:
 /promo EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v spotlight""")
         return
     
     if query.data == "buy_vip":
+        spots = SocialProof.spots_left()
+        price_time = SocialProof.price_increase_time()
+        
         if db_pool:
             async with db_pool.acquire() as conn:
                 await conn.execute("INSERT INTO payments (telegram_id, amount_sol, plan_type) VALUES ($1, $2, $3)", user_id, 0.5, 'vip')
         
-        await query.message.reply_text(f"""🧾 VIP INVOICE
+        await query.message.reply_text(f"""⚡ URGENT: Only {spots} spots left!
 
-💰 0.5 SOL
+🧾 VIP INVOICE
+
+💰 0.5 SOL (price increases in {price_time}!)
+
 🟣 {SOL_WALLET}
+
+🔥 Why users buy NOW:
+• {SocialProof.recent_sale()}
+• {SocialProof.today_stats()['sales']} sales today
+• Don't miss the next 100x!
 
 After payment:
 /confirm TX_HASH
 
 Auto-verification in 10-30s""")
 
-async def promo_cmd(update, context):
+async def promo_cmd(update: Update, context):
     if len(context.args) < 2:
-        await update.message.reply_text("Usage: /promo TOKEN_ADDRESS TIER\n\nTiers: spotlight (2 SOL), vip_alert (5 SOL), premium (10 SOL)")
+        await update.message.reply_text("Usage: /promo TOKEN_ADDRESS TIER\nTiers: spotlight (2), vip_alert (5), premium (10)")
         return
     
     token_address = context.args[0]
     tier = context.args[1].lower()
-    
     prices = {'spotlight': 2.0, 'vip_alert': 5.0, 'premium': 10.0}
+    
     if tier not in prices:
         await update.message.reply_text(f"Invalid tier. Choose: {', '.join(prices.keys())}")
         return
@@ -280,7 +410,6 @@ async def promo_cmd(update, context):
     price = prices[tier]
     user_id = update.effective_user.id
     
-    # Check payment
     if not db_pool:
         await update.message.reply_text("❌ Database error")
         return
@@ -292,50 +421,53 @@ async def promo_cmd(update, context):
             await update.message.reply_text(f"❌ Payment not found! Send {price} SOL to {SOL_WALLET} first.")
             return
         
-        # Get token data
-        token_data = await analyze_token(token_address)
-        if not token_data:
-            await update.message.reply_text("❌ Could not fetch token data. Check address.")
-            return
-        
-        # Mark paid
-        await conn.execute("UPDATE payments SET status = 'completed' WHERE id = $1", payment['id'])
-        
-        # Post to channel (SAFE - no markdown)
-        msg = f"""🚀 COMMUNITY SPOTLIGHT
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = f"https://api.dexscreener.com/latest/dex/tokens/{token_address}"
+                async with session.get(url, timeout=10) as resp:
+                    if resp.status != 200:
+                        await update.message.reply_text("❌ Could not fetch token data")
+                        return
+                    
+                    data = await resp.json()
+                    if not data.get('pairs'):
+                        await update.message.reply_text("❌ Token not found")
+                        return
+                    
+                    pair = data['pairs'][0]
+                    symbol = pair['baseToken']['symbol'].replace('*', '').replace('_', '')
+                    name = pair['baseToken']['name'].replace('*', '').replace('_', '')
+                    
+                    await conn.execute("UPDATE payments SET status = 'completed' WHERE id = $1", payment['id'])
+                    
+                    online = SocialProof.online_count()
+                    
+                    msg = f"""🚀 COMMUNITY SPOTLIGHT
 
-💎 {token_data['name']} (${token_data['symbol']})
-💵 Price: ${token_data['price']:.8f}
-💧 Liquidity: ${token_data['liquidity']:,.0f}
+💎 {name} (${symbol})
+💵 Price: ${float(pair['priceUsd']):.8f}
+💧 Liquidity: ${pair.get('liquidity', {}).get('usd', 0):,.0f}
 
-📊 Chart: {token_data['url']}
+📊 Chart: {pair['url']}
+
+👁️ {online} hunters watching now
+🔥 {SocialProof.recent_sale()}
 
 DYOR - Community promotion, not financial advice.
 
 💎 Promote your project: @ICEMEXWarSystem_Bot"""
-        
-        try:
-            await context.bot.send_message(PUBLIC_CHANNEL_ID, msg)
-            await update.message.reply_text(f"✅ {token_data['symbol']} posted to channel!")
+                    
+                    await context.bot.send_message(PUBLIC_CHANNEL_ID, msg)
+                    await update.message.reply_text(f"✅ {symbol} posted to channel! {online} traders seeing it now.")
+                    
+                    if tier in ['vip_alert', 'premium'] and VIP_GROUP_ID:
+                        await context.bot.send_message(VIP_GROUP_ID, f"⚡ VIP ALERT: New spotlight {symbol}!\nChart: {pair['url']}")
+                        await update.message.reply_text("✅ VIP alert sent!")
         except Exception as e:
-            logger.error(f"Post error: {e}")
-            await update.message.reply_text("⚠️ Error posting. Contact admin.")
-        
-        # VIP alert if applicable
-        if tier in ['vip_alert', 'premium'] and VIP_GROUP_ID:
-            vip_msg = f"""⚡ VIP ALERT
+            logger.error(f"Promo error: {e}")
+            await update.message.reply_text("⚠️ Error processing. Contact admin.")
 
-New Spotlight: {token_data['symbol']}
-
-Price: ${token_data['price']:.8f}
-Chart: {token_data['url']}"""
-            try:
-                await context.bot.send_message(VIP_GROUP_ID, vip_msg)
-                await update.message.reply_text("✅ VIP alert sent!")
-            except:
-                pass
-
-async def confirm(update, context):
+async def confirm(update: Update, context):
     if not context.args:
         await update.message.reply_text("Usage: /confirm TX_HASH")
         return
@@ -378,28 +510,40 @@ async def confirm(update, context):
                             await conn.execute("UPDATE users SET plan_type = $1, plan_expires_at = $2, total_paid = total_paid + $3 WHERE telegram_id = $4",
                                 pending['plan_type'], expires, pending['amount_sol'], user_id)
                             
+                            online = SocialProof.online_count()
+                            
                             try:
                                 invite = await context.bot.create_chat_invite_link(VIP_GROUP_ID, expire_date=datetime.now() + timedelta(hours=24), member_limit=1)
-                                await update.message.reply_text(f"""✅ CONFIRMED!
+                                
+                                await update.message.reply_text(f"""✅ CONFIRMED! WELCOME TO THE ELITE!
 
-{pending['plan_type'].upper()} activated!
-Expires: {expires.strftime('%Y-%m-%d')}
+🎉 {pending['plan_type'].upper()} activated!
+⏰ Expires: {expires.strftime('%Y-%m-%d')}
+
+🔥 You're now part of {online} elite hunters!
+
+📊 Next signal in ~{random.randint(5, 15)} minutes!
 
 🔗 VIP LINK: {invite.invite_link}
 
 ⚡ Your edge starts NOW.""")
                             except:
                                 await update.message.reply_text("✅ Confirmed! Contact admin for link.")
+                            
+                            await context.bot.send_message(ADMIN_ID, f"💰 SALE: {pending['amount_sol']} SOL from {user_id}")
                         else:
                             await update.message.reply_text(f"❌ Amount mismatch")
     except Exception as e:
         logger.error(f"Confirm error: {e}")
         await update.message.reply_text("⚠️ Error. Try again.")
 
-# Flask
+# ═══════════════════════════════════════════════════════════════════════
+# FLASK
+# ═══════════════════════════════════════════════════════════════════════
+
 @app.route("/")
 def health():
-    return jsonify({"status": "MEX-WARSYSTEM V2.6", "database": "connected" if db_pool else "disconnected"})
+    return jsonify({"status": "MEX-WARSYSTEM V3.0", "database": "connected" if db_pool else "disconnected"})
 
 @app.route(f"/webhook/{BOT_TOKEN.split(':')[1] if ':' in BOT_TOKEN else 'invalid'}", methods=['POST'])
 def webhook():
@@ -419,11 +563,14 @@ def webhook():
         logger.error(f"Webhook error: {e}")
         return jsonify({"error": str(e)}), 500
 
-# Init
+# ═══════════════════════════════════════════════════════════════════════
+# INIT
+# ═══════════════════════════════════════════════════════════════════════
+
 def init():
     global bot_app
     
-    logger.info("🚀 Starting MEX-WarSystem V2.6...")
+    logger.info("🚀 Starting MEX-WarSystem V3.0...")
     
     try:
         db_future = asyncio.run_coroutine_threadsafe(init_db(), bot_loop)
@@ -450,7 +597,7 @@ def init():
         asyncio.run_coroutine_threadsafe(bot_app.start(), bot_loop).result(timeout=30)
         asyncio.run_coroutine_threadsafe(signal_loop(), bot_loop)
         
-        logger.info("✅ V2.6 READY - SAFE MARKDOWN MODE")
+        logger.info("✅ V3.0 READY - MONEY MACHINE ACTIVATED")
         
     except Exception as e:
         logger.error(f"Init failed: {e}")
