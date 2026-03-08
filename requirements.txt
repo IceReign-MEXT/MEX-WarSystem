@@ -3,3 +3,4 @@ flask>=2.3.3
 aiohttp>=3.9.1
 asyncpg>=0.29.0
 python-dotenv>=1.0.0
+gunicorn>=21.2.0
