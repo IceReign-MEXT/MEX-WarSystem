@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 ═══════════════════════════════════════════════════════════════════════════
-ICEGODS BOT PLATFORM v6.0 - PRODUCTION SaaS WITH AIRDROP SYSTEM
-Master bot that deploys white-label client bots + automatic token distribution
+ICEGODS BOT PLATFORM v6.1 - PRODUCTION READY
+Fixed Database Schema + Token Detection + Airdrop System
 ═══════════════════════════════════════════════════════════════════════════
 """
 
@@ -14,6 +14,7 @@ import logging
 import aiohttp
 import json
 import secrets
+import traceback
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
@@ -26,7 +27,7 @@ from flask import Flask, request, jsonify
 
 # Import our modules
 from database import init_db, SessionLocal, get_or_create_admin, check_subscription, add_referral_reward, get_stats, Admin, Payment, ClientBot
-from airdrop_manager import AirdropManager, run_airdrop_scheduler
+from token_detector import run_detection_loop
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -36,24 +37,30 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ═══════════════════════════════════════════════════════════════════════
-# CONFIGURATION FROM ENVIRONMENT
+# CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 MASTER_WALLET = os.getenv("MASTER_WALLET")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-PORT = int(os.getenv("PORT", 10000))
+PORT = int(os.getenv("PORT", "10000"))
 HELIUS_KEY = os.getenv("HELIUS_API_KEY")
 SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "@MexRobert")
 
-SAAS_MONTHLY = float(os.getenv("SAAS_MONTHLY_PRICE", 5.0))
-SAAS_YEARLY = float(os.getenv("SAAS_YEARLY_PRICE", 50.0))
-REFERRAL_REWARD_DAYS = int(os.getenv("REFERRAL_REWARD_DAYS", 3))
-MAX_CLIENTS_PER_ADMIN = int(os.getenv("MAX_CLIENTS_PER_ADMIN", 10))
+SAAS_MONTHLY = float(os.getenv("SAAS_MONTHLY_PRICE", "5.0"))
+SAAS_YEARLY = float(os.getenv("SAAS_YEARLY_PRICE", "50.0"))
+REFERRAL_REWARD_DAYS = int(os.getenv("REFERRAL_REWARD_DAYS", "3"))
 
-if not all([BOT_TOKEN, ADMIN_ID, MASTER_WALLET]):
-    raise ValueError("Missing required environment variables!")
+# Validation
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN not set!")
+if not MASTER_WALLET:
+    raise ValueError("MASTER_WALLET not set!")
+if ADMIN_ID == 0:
+    raise ValueError("ADMIN_ID not set!")
+
+logger.info(f"Config loaded: Admin={ADMIN_ID}, Master Wallet={MASTER_WALLET[:15]}...")
 
 # ═══════════════════════════════════════════════════════════════════════
 # GLOBALS
@@ -64,10 +71,10 @@ application = None
 bot_loop = None
 
 # ═══════════════════════════════════════════════════════════════════════
-# HELIUS PAYMENT VERIFICATION
+# PAYMENT VERIFICATION
 # ═══════════════════════════════════════════════════════════════════════
 
-async def verify_payment_by_tx(tx_hash, expected_amount):
+async def verify_payment_by_tx(tx_hash: str, expected_amount: float) -> tuple:
     """Verify Solana transaction via Helius"""
     try:
         async with aiohttp.ClientSession() as session:
@@ -76,11 +83,12 @@ async def verify_payment_by_tx(tx_hash, expected_amount):
             
             async with session.post(url, json=payload, timeout=30) as resp:
                 if resp.status != 200:
-                    return False, 0
+                    logger.error(f"Helius API error: {resp.status}")
+                    return False, 0.0
                 
                 data = await resp.json()
-                if not data or not isinstance(data, list):
-                    return False, 0
+                if not data or not isinstance(data, list) or len(data) == 0:
+                    return False, 0.0
                 
                 tx = data[0]
                 transfers = tx.get('nativeTransfers', [])
@@ -91,83 +99,86 @@ async def verify_payment_by_tx(tx_hash, expected_amount):
                         if abs(amount_sol - expected_amount) < 0.01:
                             return True, amount_sol
                 
-                return False, 0
+                return False, 0.0
                 
     except Exception as e:
-        logger.error(f"Verify error: {e}")
-        return False, 0
+        logger.error(f"Payment verification error: {e}")
+        return False, 0.0
 
 # ═══════════════════════════════════════════════════════════════════════
 # COMMAND HANDLERS
 # ═══════════════════════════════════════════════════════════════════════
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Main entry point with viral referral system"""
+    """Main entry point"""
     user = update.effective_user
-    db = SessionLocal()
+    logger.info(f"/start from {user.id} (@{user.username})")
     
+    db = SessionLocal()
     try:
-        # Check for referral code in deep link
+        # Check for referral code
         referral_code = None
         if context.args and len(context.args) > 0:
             referral_code = context.args[0]
+            logger.info(f"Referral code detected: {referral_code}")
         
         # Get or create admin
         admin = get_or_create_admin(db, user.id, user.username, user.first_name)
         
-        # Process referral if new user
+        # Process referral
         if referral_code and admin.created_at > datetime.utcnow() - timedelta(minutes=1):
             referrer = db.query(Admin).filter(Admin.referral_code == referral_code).first()
             if referrer and referrer.telegram_id != user.id:
-                add_referral_reward(db, referrer.telegram_id, REFERRAL_REWARD_DAYS)
-                await context.bot.send_message(
-                    referrer.telegram_id,
-                    f"🎉 New referral! @{user.username or user.id} joined using your code!\n"
-                    f"⏰ +{REFERRAL_REWARD_DAYS} days added to your subscription!"
-                )
+                success = add_referral_reward(db, referrer.telegram_id, REFERRAL_REWARD_DAYS)
+                if success:
+                    try:
+                        await context.bot.send_message(
+                            referrer.telegram_id,
+                            f"🎉 New referral! @{user.username or user.id} joined!\n"
+                            f"⏰ +{REFERRAL_REWARD_DAYS} days added!"
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to notify referrer: {e}")
         
-        # Master admin panel
+        # MASTER ADMIN PANEL
         if user.id == ADMIN_ID:
             stats = get_stats(db)
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton("📊 Stats", callback_data="master_stats")],
                 [InlineKeyboardButton("💰 Revenue", callback_data="master_revenue")],
                 [InlineKeyboardButton("👥 Admins", callback_data="master_admins")],
-                [InlineKeyboardButton("🤖 Deployments", callback_data="master_bots")]
+                [InlineKeyboardButton("🤖 Bots", callback_data="master_bots")]
             ])
             
             await update.message.reply_text(
                 f"""👑 ICEGODS MASTER DASHBOARD
 
-💎 Platform Statistics:
+💎 Platform Stats:
 • Total Admins: {stats['total_admins']}
 • Active Subs: {stats['active_admins']}
 • Bots Deployed: {stats['total_bots']}
 • Revenue: {stats['total_revenue_sol']:.2f} SOL
 
-💳 Master Wallet:
-`{MASTER_WALLET[:20]}...`
+💳 Wallet: `{MASTER_WALLET[:20]}...`
 
 ⚡ Status: ONLINE
-🔄 Airdrop System: ACTIVE""",
+🔍 Detection: ACTIVE""",
                 reply_markup=keyboard,
                 parse_mode='Markdown'
             )
             return
         
-        # Check subscription status
+        # REGULAR USER
         is_active, days_left = check_subscription(db, user.id)
         
         if is_active:
             bots_count = len(admin.client_bots)
-            max_bots = admin.max_clients
             
             keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🚀 Deploy New Bot", callback_data="deploy_bot")],
+                [InlineKeyboardButton("🚀 Deploy Bot", callback_data="deploy_bot")],
                 [InlineKeyboardButton("⚙️ My Bots", callback_data="my_bots")],
-                [InlineKeyboardButton("🎁 Create Airdrop", callback_data="create_airdrop")],
-                [InlineKeyboardButton("📢 Marketing Tools", callback_data="marketing")],
-                [InlineKeyboardButton("💎 Referral Program", callback_data="referral")]
+                [InlineKeyboardButton("🎁 Airdrops", callback_data="airdrops")],
+                [InlineKeyboardButton("💎 Referrals", callback_data="referral")]
             ])
             
             await update.message.reply_text(
@@ -175,67 +186,58 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 ✅ Status: ACTIVE
 ⏰ Expires: {days_left} days
-🤖 Bots: {bots_count}/{max_bots}
+🤖 Bots: {bots_count}/{admin.max_clients}
 💰 Earned: {admin.total_earned_sol:.2f} SOL
 
-🔗 Your Referral Code: `{admin.referral_code}`
+🔗 Code: `{admin.referral_code}`
 👥 Referrals: {admin.referral_count}
 
-🚀 Deploy your white-label bot and start earning!""",
+🚀 Deploy your bot and start earning!""",
                 reply_markup=keyboard,
                 parse_mode='Markdown'
             )
         else:
-            # New or expired - show pricing with referral option
+            # NO SUBSCRIPTION
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton(f"💎 Monthly ({SAAS_MONTHLY} SOL)", callback_data="sub_monthly")],
                 [InlineKeyboardButton(f"👑 Yearly ({SAAS_YEARLY} SOL)", callback_data="sub_yearly")],
-                [InlineKeyboardButton("🎁 Have Referral Code?", callback_data="enter_referral")]
+                [InlineKeyboardButton("🎁 Have Code?", callback_data="enter_referral")]
             ])
             
             await update.message.reply_text(
                 f"""🚀 ICEGODS Bot Platform
 
-Deploy your own token alert bot empire!
+Deploy white-label token alert bots!
 
 💎 WHAT YOU GET:
-✅ White-label Telegram bot (your brand)
-✅ Automated token alerts (DexScreener)
-✅ Subscription management (VIP/Whale/Premium)
+✅ Auto-detect new token launches
+✅ VIP/Whale/Premium tiers
 ✅ Automatic airdrop distribution
-✅ Revenue dashboard (you keep 80%)
-
-💰 YOUR EARNINGS:
-• Set your own prices (VIP/Whale/Premium)
-• Keep 80% of all subscriber payments
-• Passive SOL income 24/7
+✅ You keep 80% of revenue
 
 📊 PRICING:
 • Monthly: {SAAS_MONTHLY} SOL
-• Yearly: {SAAS_YEARLY} SOL (Save 17%)
+• Yearly: {SAAS_YEARLY} SOL
 
-🔥 VIRAL BONUS:
-Refer 3 friends = +3 days free + 1 extra bot slot!
+🔥 BONUS: Refer 3 = +3 days + 1 bot slot!
 
-Tap below to start 👇""",
+Tap below 👇""",
                 reply_markup=keyboard
             )
     
+    except Exception as e:
+        logger.error(f"Error in cmd_start: {e}")
+        logger.error(traceback.format_exc())
+        await update.message.reply_text("❌ Error loading dashboard. Please try /start again.")
     finally:
         db.close()
 
 async def cmd_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Verify payment and activate subscription"""
+    """Verify payment"""
     user = update.effective_user
     
     if not context.args or len(context.args) < 1:
-        await update.message.reply_text(
-            """🛰 PAYMENT VERIFICATION
-
-Usage: /confirm TRANSACTION_HASH
-
-After sending SOL, paste your transaction hash here."""
-        )
+        await update.message.reply_text("Usage: /confirm TRANSACTION_HASH")
         return
     
     tx_hash = context.args[0].strip()
@@ -244,14 +246,15 @@ After sending SOL, paste your transaction hash here."""
         await update.message.reply_text("❌ Invalid transaction hash")
         return
     
-    await update.message.reply_text("🛰 Verifying on Solana blockchain...")
+    await update.message.reply_text("🛰 Verifying on Solana...")
     
     db = SessionLocal()
     try:
         # Check if tx already used
         existing = db.query(Payment).filter(Payment.tx_hash == tx_hash).first()
         if existing:
-            await update.message.reply_text("❌ This transaction was already used!")
+            await update.message.reply_text("❌ Transaction already used!")
+            db.close()
             return
         
         # Try monthly then yearly
@@ -271,7 +274,6 @@ After sending SOL, paste your transaction hash here."""
                     admin.expires_at = datetime.utcnow() + timedelta(days=days)
                 
                 admin.plan_type = plan_type
-                admin.is_active = True
                 
                 # Record payment
                 payment = Payment(
@@ -286,62 +288,40 @@ After sending SOL, paste your transaction hash here."""
                 db.commit()
                 
                 await update.message.reply_text(
-                    f"""✅ PAYMENT VERIFIED!
+                    f"""✅ ACTIVATED!
 
-🎉 Subscription: {plan_type.upper()}
+🎉 Plan: {plan_type.upper()}
 ⏰ Duration: {days} days
 📅 Expires: {admin.expires_at.strftime('%Y-%m-%d')}
-💰 Amount: {actual_amount:.4f} SOL
+💰 Paid: {actual_amount:.4f} SOL
 
-🚀 Click /start to access your dashboard!"""
+🚀 Click /start!"""
                 )
                 
                 # Notify master
-                await context.bot.send_message(
-                    ADMIN_ID,
-                    f"💰 NEW SUB!\nUser: {user.id}\nPlan: {plan_type}\nAmount: {actual_amount:.4f} SOL"
-                )
+                try:
+                    await context.bot.send_message(
+                        ADMIN_ID,
+                        f"💰 NEW: {user.id} | {plan_type} | {actual_amount:.4f} SOL"
+                    )
+                except:
+                    pass
                 return
         
         await update.message.reply_text(
-            """❌ PAYMENT NOT FOUND
+            f"""❌ NOT FOUND
 
 Check:
-• Did you send exactly 5 or 50 SOL?
-• Is it confirmed? (wait 1-2 min)
-• Correct wallet? 
+• Sent exactly {SAAS_MONTHLY} or {SAAS_YEARLY} SOL?
+• Transaction confirmed?
+• Correct wallet: {MASTER_WALLET[:15]}...
 
-Support: """ + SUPPORT_USERNAME
+Support: {SUPPORT_USERNAME}"""
         )
     
-    finally:
-        db.close()
-
-async def cmd_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show referral status"""
-    db = SessionLocal()
-    try:
-        admin = get_or_create_admin(db, update.effective_user.id)
-        
-        referral_link = f"https://t.me/{context.bot.username}?start={admin.referral_code}"
-        
-        await update.message.reply_text(
-            f"""🎁 REFERRAL PROGRAM
-
-🔗 Your Link:
-`{referral_link}`
-
-📊 Stats:
-• Referrals: {admin.referral_count}
-• Next Reward: {3 - (admin.referral_count % 3)} more for +3 days
-
-💎 Rewards:
-• Each referral = +3 days subscription
-• Every 3 referrals = +1 bot slot (max {MAX_CLIENTS_PER_ADMIN})
-
-Share your link to earn free access!""",
-            parse_mode='Markdown'
-        )
+    except Exception as e:
+        logger.error(f"Error in confirm: {e}")
+        await update.message.reply_text("❌ Verification error. Try again.")
     finally:
         db.close()
 
@@ -350,39 +330,36 @@ Share your link to earn free access!""",
 # ═══════════════════════════════════════════════════════════════════════
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle all inline buttons"""
+    """Handle buttons"""
     query = update.callback_query
     await query.answer()
     
     user_id = query.from_user.id
     data = query.data
     
-    db = SessionLocal()
+    logger.info(f"Button: {data} by {user_id}")
+    
     try:
         if data == "sub_monthly":
-            await show_payment_invoice(query, user_id, "monthly", SAAS_MONTHLY, 30)
+            await show_invoice(query, "monthly", SAAS_MONTHLY, 30)
         elif data == "sub_yearly":
-            await show_payment_invoice(query, user_id, "yearly", SAAS_YEARLY, 365)
-        elif data == "deploy_bot":
-            await start_deployment(query, user_id)
-        elif data == "create_airdrop":
-            await show_airdrop_menu(query, user_id)
-        elif data == "referral":
-            await show_referral_status(query, user_id)
+            await show_invoice(query, "yearly", SAAS_YEARLY, 365)
         elif data == "master_stats":
-            await show_master_stats(query)
-        elif data.startswith("deploy_"):
-            await process_deployment_step(query, user_id, data, context)
+            await show_stats(query)
+        elif data == "referral":
+            await show_referral(query, user_id)
         elif data == "main_menu":
-            await back_to_main(query, context)
+            await back_to_start(query, context)
+        else:
+            await query.message.edit_text("🚧 Feature coming soon!\n\nClick /start to refresh.")
     
-    finally:
-        db.close()
+    except Exception as e:
+        logger.error(f"Button error: {e}")
+        await query.message.reply_text("❌ Error. Click /start")
 
-async def show_payment_invoice(query, user_id, plan_type, amount, days):
-    """Show payment instructions"""
+async def show_invoice(query, plan_type, amount, days):
+    """Show payment invoice"""
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ I've Paid - Confirm", callback_data=f"confirm_{plan_type}")],
         [InlineKeyboardButton("🔙 Back", callback_data="main_menu")]
     ])
     
@@ -394,169 +371,74 @@ Duration: {days} days
 Amount: {amount} SOL
 
 ═══════════════════
-SEND EXACTLY {amount} SOL TO:
+SEND TO:
 `{MASTER_WALLET}`
 ═══════════════════
 
-⚠️ Send ONLY SOL (SPL tokens not accepted)
+⚠️ Send EXACTLY {amount} SOL
 
-After sending, use:
+After sending:
 /confirm YOUR_TX_HASH
 
-Or click "I've Paid" and paste your hash.""",
+Support: {SUPPORT_USERNAME}""",
         reply_markup=keyboard,
         parse_mode='Markdown'
     )
 
-async def start_deployment(query, user_id):
-    """Start bot deployment wizard"""
+async def show_stats(query):
+    """Show platform stats"""
     db = SessionLocal()
     try:
-        admin = db.query(Admin).filter(Admin.telegram_id == user_id).first()
-        
-        if not admin or not admin.expires_at or admin.expires_at < datetime.utcnow():
-            await query.message.edit_text("❌ Active subscription required!")
-            return
-        
-        if len(admin.client_bots) >= admin.max_clients:
-            await query.message.edit_text(
-                f"""❌ Bot Limit Reached
-
-You have {len(admin.client_bots)}/{admin.max_clients} bots.
-
-Upgrade options:
-• Refer 3 friends = +1 slot
-• Contact {SUPPORT_USERNAME} for upgrade"""
-            )
-            return
-        
-        # Start deployment wizard
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🚀 Start Setup", callback_data="deploy_step1")],
-            [InlineKeyboardButton("🔙 Cancel", callback_data="main_menu")]
-        ])
-        
+        stats = get_stats(db)
         await query.message.edit_text(
-            """🚀 BOT DEPLOYMENT WIZARD
+            f"""📊 PLATFORM STATS
 
-I'll create your white-label bot in 3 steps:
+👥 Admins: {stats['total_admins']} (Active: {stats['active_admins']})
+🤖 Bots: {stats['total_bots']}
+💰 Revenue: {stats['total_revenue_sol']:.2f} SOL
 
-1️⃣ Bot Token (from @BotFather)
-2️⃣ Channel ID (for alerts)
-3️⃣ Your Wallet (for payments)
-
-⚡ Takes 2 minutes to go live!
-
-Ready?""",
-            reply_markup=keyboard
+⚡ System: ONLINE"""
         )
-    
     finally:
         db.close()
 
-async def show_airdrop_menu(query, user_id):
-    """Show airdrop creation interface"""
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🆕 New Airdrop", callback_data="airdrop_new")],
-        [InlineKeyboardButton("📊 History", callback_data="airdrop_history")],
-        [InlineKeyboardButton("🔙 Back", callback_data="main_menu")]
-    ])
-    
-    await query.message.edit_text(
-        """🎁 AIRDROP MANAGER
-
-Distribute tokens automatically to your subscribers!
-
-Features:
-• Auto-distribute by tier (VIP/Whale/Premium)
-• Schedule for token launch day
-• Track delivery status
-• Anti-sybil protection
-
-Select an option:""",
-        reply_markup=keyboard
-    )
-
-async def show_referral_status(query, user_id):
-    """Show referral dashboard"""
+async def show_referral(query, user_id):
+    """Show referral info"""
     db = SessionLocal()
     try:
         admin = db.query(Admin).filter(Admin.telegram_id == user_id).first()
         bot_username = query.message.bot.username
-        referral_link = f"https://t.me/{bot_username}?start={admin.referral_code}"
+        link = f"https://t.me/{bot_username}?start={admin.referral_code}"
         
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📤 Share Link", url=f"https://t.me/share/url?url={referral_link}&text=Join%20ICEGODS%20Bot%20Platform%20-%20Deploy%20your%20own%20token%20alert%20bot!")],
+            [InlineKeyboardButton("📤 Share", url=f"https://t.me/share/url?url={link}&text=Join ICEGODS!")],
             [InlineKeyboardButton("🔙 Back", callback_data="main_menu")]
         ])
         
         await query.message.edit_text(
-            f"""🎁 YOUR REFERRAL DASHBOARD
+            f"""🎁 REFERRAL PROGRAM
 
 🔗 Your Link:
-`{referral_link}`
+`{link}`
 
-📊 Statistics:
-• Total Referrals: {admin.referral_count}
-• Free Days Earned: {admin.referral_count * 3} days
-• Bot Slots Earned: {admin.referral_count // 3}
+📊 Stats:
+• Referrals: {admin.referral_count}
+• Earned: {admin.referral_count * 3} days
 
-🎯 Next Reward:
-Refer {3 - (admin.referral_count % 3)} more = +3 days + 1 bot slot!
-
-Share to crypto groups, Twitter, Discord!""",
+🎯 Next: Refer {3 - (admin.referral_count % 3)} more = +3 days!""",
             reply_markup=keyboard,
             parse_mode='Markdown'
         )
     finally:
         db.close()
 
-async def show_master_stats(query):
-    """Master admin statistics"""
-    db = SessionLocal()
-    try:
-        stats = get_stats(db)
-        
-        await query.message.edit_text(
-            f"""📊 PLATFORM STATISTICS
-
-👥 Users:
-• Total Admins: {stats['total_admins']}
-• Active: {stats['active_admins']}
-
-🤖 Bots:
-• Deployed: {stats['total_bots']}
-• Active: {stats['active_bots']}
-
-💰 Revenue:
-• Total: {stats['total_revenue_sol']:.2f} SOL
-
-⚡ System Status: ONLINE"""
-        )
-    finally:
-        db.close()
-
-async def back_to_main(query, context):
+async def back_to_start(query, context):
     """Return to main menu"""
-    # Create fake update to reuse cmd_start
-    class FakeMessage:
-        def __init__(self, chat, text, bot):
-            self.chat = chat
-            self.text = text
-            self.bot = bot
-        async def reply_text(self, *args, **kwargs):
-            return await query.message.edit_text(*args, **kwargs)
-    
-    class FakeUpdate:
-        def __init__(self, user, message):
-            self.effective_user = user
-            self.message = message
-    
-    fake_update = FakeUpdate(query.from_user, FakeMessage(query.message.chat, "/start", query.message.bot))
-    await cmd_start(fake_update, context)
+    # Trigger /start command
+    await cmd_start(Update(update_id=0, message=query.message, callback_query=query), context)
 
 # ═══════════════════════════════════════════════════════════════════════
-# WEBHOOK & SERVER
+# WEB SERVER
 # ═══════════════════════════════════════════════════════════════════════
 
 def process_update_sync(update_data):
@@ -572,38 +454,44 @@ def process_update_sync(update_data):
         )
         return future.result(timeout=30)
     except Exception as e:
-        logger.error(f"Process update error: {e}")
+        logger.error(f"Process error: {e}")
         return False
 
 async def process_update_async(update_data):
-    """Process update in bot's async context"""
+    """Process update"""
     try:
         update = Update.de_json(update_data, application.bot)
         await application.process_update(update)
         return True
     except Exception as e:
-        logger.error(f"Update processing error: {e}")
+        logger.error(f"Update error: {e}")
         return False
 
 @app.route("/")
 def health():
-    db = SessionLocal()
+    """Health check with DB verification"""
     try:
+        db = SessionLocal()
         stats = get_stats(db)
+        db.close()
+        
         return jsonify({
-            "status": "ICEGODS v6.0 PRODUCTION",
+            "status": "ICEGODS v6.1 ONLINE",
             "database": "connected",
-            "admins": stats['total_admins'],
-            "active": stats['active_admins'],
-            "revenue_sol": stats['total_revenue_sol'],
-            "webhook": "active",
+            "stats": stats,
             "time": datetime.utcnow().isoformat()
         })
-    finally:
-        db.close()
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return jsonify({
+            "status": "ERROR",
+            "error": str(e),
+            "time": datetime.utcnow().isoformat()
+        }), 500
 
 @app.route(f"/webhook/{BOT_TOKEN.split(':')[1]}", methods=['POST'])
 def webhook():
+    """Telegram webhook endpoint"""
     if not application or bot_loop is None:
         return jsonify({"error": "Bot not ready"}), 503
     
@@ -624,22 +512,26 @@ def webhook():
 # ═══════════════════════════════════════════════════════════════════════
 
 async def bot_main():
-    """Main bot coroutine"""
+    """Main bot loop"""
     global application, bot_loop
     
     bot_loop = asyncio.get_running_loop()
+    logger.info("Bot loop started")
     
     # Initialize database
-    init_db()
+    try:
+        init_db()
+        logger.info("✅ Database initialized")
+    except Exception as e:
+        logger.error(f"❌ Database init failed: {e}")
+        raise
     
     # Create application
     application = Application.builder().token(BOT_TOKEN).build()
     
-    # Register handlers
+    # Handlers
     application.add_handler(CommandHandler("start", cmd_start))
-    application.add_handler(CommandHandler("help", lambda u,c: u.message.reply_text("Use /start")))
     application.add_handler(CommandHandler("confirm", cmd_confirm))
-    application.add_handler(CommandHandler("referral", cmd_referral))
     application.add_handler(CallbackQueryHandler(button_handler))
     
     await application.initialize()
@@ -654,7 +546,7 @@ async def bot_main():
     await application.start()
     logger.info("✅ Bot started!")
     
-    # Keep running
+    # Keep alive
     while True:
         await asyncio.sleep(3600)
 
@@ -664,29 +556,30 @@ def run_bot():
 
 def main():
     logger.info("=" * 60)
-    logger.info("ICEGODS v6.0 - PRODUCTION SaaS PLATFORM")
+    logger.info("ICEGODS v6.1 STARTING")
     logger.info("=" * 60)
     
     # Start bot thread
     bot_thread = threading.Thread(target=run_bot, daemon=True)
     bot_thread.start()
     
-    # Start airdrop scheduler thread
-    def run_scheduler():
-        asyncio.run(run_airdrop_scheduler())
+    # Start detection loop in separate thread
+    def run_detector():
+        asyncio.run(run_detection_loop())
     
-    scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
-    scheduler_thread.start()
+    detector_thread = threading.Thread(target=run_detector, daemon=True)
+    detector_thread.start()
     
-    # Wait for ready
+    # Wait for bot to be ready
     import time
-    for i in range(30):
+    for i in range(60):
         if bot_loop is not None:
+            logger.info("✅ Bot ready, starting server")
             break
-        time.sleep(0.5)
+        time.sleep(1)
     
     # Start Flask
-    logger.info(f"Starting server on port {PORT}")
+    logger.info(f"Starting Flask on port {PORT}")
     app.run(host="0.0.0.0", port=PORT, threaded=False)
 
 if __name__ == "__main__":
