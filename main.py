@@ -48,7 +48,7 @@ class ViralDB:
         self.payments = []
         self.visits_today = 0
         self.joins_today = 0
-        self.spots_remaining = 47  # Fake scarcity
+        self.spots_remaining = 47
         self.price_increase_time = datetime.utcnow() + timedelta(hours=24)
         self.success_stories = [
             {"name": "CryptoWhale", "profit": 45.5, "time": "2 hours ago"},
@@ -311,28 +311,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-# Import traffic engine
-from traffic_engine import TwitterPoster, TelegramGrowth, ContentCalendar
-
-# Add to main():
-async def run_traffic():
-    """Start all traffic generation"""
-    twitter = TwitterPoster()
-    telegram = TelegramGrowth(application)
-    content = ContentCalendar()
-    
-    await asyncio.gather(
-        twitter.post_loop(),
-        telegram.growth_loop(),
-        content.post_to_channel(application.bot, "@ICEGODSICEDEVIL"),
-        return_exceptions=True
-    )
-
-# Start traffic in background
-def traffic_thread():
-    asyncio.run(run_traffic())
-
-threading.Thread(target=traffic_thread, daemon=True).start()
-
