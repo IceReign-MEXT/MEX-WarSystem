@@ -2,241 +2,245 @@
 """
 ═══════════════════════════════════════════════════════════════════════════
 ICEGODS BOT PLATFORM - SaaS Revenue System
-Master Bot: Manages client subscriptions, white-label deployments, revenue sharing
+Working Version for Render Deployment
 ═══════════════════════════════════════════════════════════════════════════
 """
 
 import os
+import sys
 import asyncio
+import threading
 import logging
 import aiohttp
 import random
 import json
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Optional, Dict, List
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
+from typing import Optional, Dict, List, Any
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, jsonify
 import asyncpg
-from functools import wraps
+
+# Force load environment variables immediately
+from dotenv import load_dotenv
+load_dotenv()
 
 # Logging setup
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.INFO,
+    stream=sys.stdout
 )
 logger = logging.getLogger(__name__)
 
 # ═══════════════════════════════════════════════════════════════════════
-# CONFIGURATION
+# CONFIGURATION - Hardcoded Fallbacks if env vars fail
 # ═══════════════════════════════════════════════════════════════════════
 
 class Config:
-    """Centralized configuration"""
-    BOT_TOKEN = os.getenv("BOT_TOKEN")
-    ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
-    BOT_USERNAME = os.getenv("BOT_USERNAME", "ICEMEXWarSystem_Bot")
-    PLATFORM_NAME = os.getenv("PLATFORM_NAME", "ICEGODS Platform")
-    PLATFORM_URL = os.getenv("PLATFORM_URL", "")
-    SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "@MexRobert")
-    MASTER_WALLET = os.getenv("MASTER_WALLET", "")
-    DATABASE_URL = os.getenv("DATABASE_URL")
-    WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-    PORT = int(os.getenv("PORT", "8080"))
-    HELIUS_KEY = os.getenv("HELIUS_API_KEY")
+    """Configuration with hardcoded fallbacks"""
+    BOT_TOKEN = os.getenv("BOT_TOKEN") or "7968707142:AAHk3snOd8SxZ_8_hJY5Tq0p6eDebh9RvJk"
+    ADMIN_ID = int(os.getenv("ADMIN_ID") or "8254662446")
+    BOT_USERNAME = os.getenv("BOT_USERNAME") or "ICEMEXWarSystem_Bot"
+    PLATFORM_NAME = os.getenv("PLATFORM_NAME") or "ICEGODS Platform"
+    PLATFORM_URL = os.getenv("PLATFORM_URL") or "https://icegods-platform.onrender.com"
+    SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME") or "MexRobert"
+    MASTER_WALLET = os.getenv("MASTER_WALLET") or "HxmywH2gW9ezQ2nBXwurpaWsZS6YvdmLF23R9WgMAM7p"
+    DATABASE_URL = os.getenv("DATABASE_URL") or "postgresql://postgres.sezxolvjozcbqhwlhluz:IceWarlord30Icegods@aws-1-eu-north-1.pooler.supabase.com:6543/postgres"
+    WEBHOOK_URL = os.getenv("WEBHOOK_URL") or "https://mex-warsystem-8rzh.onrender.com"
+    PORT = int(os.getenv("PORT") or "8080")
+    HELIUS_KEY = os.getenv("HELIUS_API_KEY") or "1b0094c2-50b9-4c97-a2d6-2c47d4ac2789"
     
     # SaaS Pricing
-    SAAS_MONTHLY = float(os.getenv("SAAS_MONTHLY_PRICE", "5.0"))
-    SAAS_YEARLY = float(os.getenv("SAAS_YEARLY_PRICE", "50.0"))
-    COMMISSION_PERCENT = float(os.getenv("SAAS_COMMISSION_PERCENT", "20"))
+    SAAS_MONTHLY = float(os.getenv("SAAS_MONTHLY_PRICE") or "5.0")
+    SAAS_YEARLY = float(os.getenv("SAAS_YEARLY_PRICE") or "50.0")
+    COMMISSION_PERCENT = float(os.getenv("SAAS_COMMISSION_PERCENT") or "20")
     
     # Client Pricing Defaults
-    DEFAULT_VIP = float(os.getenv("DEFAULT_VIP_PRICE", "0.5"))
-    DEFAULT_WHALE = float(os.getenv("DEFAULT_WHALE_PRICE", "1.0"))
-    DEFAULT_PREMIUM = float(os.getenv("DEFAULT_PREMIUM_PRICE", "2.5"))
+    DEFAULT_VIP = float(os.getenv("DEFAULT_VIP_PRICE") or "0.5")
+    DEFAULT_WHALE = float(os.getenv("DEFAULT_WHALE_PRICE") or "1.0")
+    DEFAULT_PREMIUM = float(os.getenv("DEFAULT_PREMIUM_PRICE") or "2.5")
     
     # Features
-    SIGNAL_INTERVAL = int(os.getenv("SIGNAL_INTERVAL_MINUTES", "10"))
-    REFERRAL_REWARD_DAYS = int(os.getenv("REFERRAL_REWARD_DAYS", "3"))
-    REFERRALS_NEEDED = int(os.getenv("REFERRALS_NEEDED", "3"))
+    SIGNAL_INTERVAL = int(os.getenv("SIGNAL_INTERVAL_MINUTES") or "10")
+    REFERRAL_REWARD_DAYS = int(os.getenv("REFERRAL_REWARD_DAYS") or "3")
+    REFERRALS_NEEDED = int(os.getenv("REFERRALS_NEEDED") or "3")
 
+# Log configuration on startup
+logger.info(f"🔧 Config loaded: BOT_TOKEN={'SET' if Config.BOT_TOKEN else 'MISSING'}, ADMIN_ID={Config.ADMIN_ID}")
+
+# Flask app
 app = Flask(__name__)
-db_pool = None
-application = None
+
+# Global variables
+db_pool: Optional[asyncpg.Pool] = None
+bot_app: Optional[Application] = None
+bot_loop: Optional[asyncio.AbstractEventLoop] = None
 
 # ═══════════════════════════════════════════════════════════════════════
 # DATABASE MANAGEMENT
 # ═══════════════════════════════════════════════════════════════════════
 
-class DatabaseManager:
-    """Handle all database operations"""
-    
-    @staticmethod
-    async def init():
-        global db_pool
-        try:
-            db_pool = await asyncpg.create_pool(
-                Config.DATABASE_URL,
-                min_size=1,
-                max_size=10,
-                command_timeout=60
-            )
+async def init_database():
+    """Initialize database connection and tables"""
+    global db_pool
+    try:
+        logger.info("🔌 Connecting to database...")
+        db_pool = await asyncpg.create_pool(
+            Config.DATABASE_URL,
+            min_size=1,
+            max_size=10,
+            command_timeout=60,
+            ssl="require"
+        )
+        
+        async with db_pool.acquire() as conn:
+            logger.info("📊 Creating tables...")
             
-            async with db_pool.acquire() as conn:
-                # Master admin table
-                await conn.execute("""
-                    CREATE TABLE IF NOT EXISTS platform_admins (
-                        admin_id BIGINT PRIMARY KEY,
-                        username TEXT,
-                        subscription_type TEXT DEFAULT 'none',
-                        subscription_expires TIMESTAMP,
-                        revenue_share_percent DECIMAL(5,2) DEFAULT 80.00,
-                        total_earned DECIMAL(15,4) DEFAULT 0,
-                        total_paid_to_platform DECIMAL(15,4) DEFAULT 0,
-                        api_key TEXT UNIQUE,
-                        webhook_url TEXT,
-                        status TEXT DEFAULT 'active',
-                        created_at TIMESTAMP DEFAULT NOW(),
-                        last_payment TIMESTAMP
-                    )
-                """)
-                
-                # Client bots (white-label instances)
-                await conn.execute("""
-                    CREATE TABLE IF NOT EXISTS client_bots (
-                        bot_id SERIAL PRIMARY KEY,
-                        admin_id BIGINT REFERENCES platform_admins(admin_id),
-                        bot_token TEXT,
-                        bot_username TEXT,
-                        public_channel_id TEXT,
-                        vip_group_id TEXT,
-                        client_wallet TEXT,
-                        vip_price DECIMAL(10,4) DEFAULT 0.5,
-                        whale_price DECIMAL(10,4) DEFAULT 1.0,
-                        premium_price DECIMAL(10,4) DEFAULT 2.5,
-                        status TEXT DEFAULT 'active',
-                        deployed_at TIMESTAMP DEFAULT NOW(),
-                        monthly_revenue DECIMAL(15,4) DEFAULT 0,
-                        total_users INT DEFAULT 0,
-                        paid_users INT DEFAULT 0
-                    )
-                """)
-                
-                # End users (across all client bots)
-                await conn.execute("""
-                    CREATE TABLE IF NOT EXISTS end_users (
-                        user_id BIGINT,
-                        client_bot_id INT REFERENCES client_bots(bot_id),
-                        telegram_id BIGINT,
-                        username TEXT,
-                        plan_type TEXT DEFAULT 'free',
-                        plan_expires TIMESTAMP,
-                        referrals_count INT DEFAULT 0,
-                        total_paid DECIMAL(10,4) DEFAULT 0,
-                        solana_wallet TEXT,
-                        created_at TIMESTAMP DEFAULT NOW(),
-                        PRIMARY KEY (client_bot_id, telegram_id)
-                    )
-                """)
-                
-                # Payments (platform fees from admins)
-                await conn.execute("""
-                    CREATE TABLE IF NOT EXISTS platform_payments (
-                        id SERIAL PRIMARY KEY,
-                        admin_id BIGINT,
-                        amount_sol DECIMAL(10,4),
-                        payment_type TEXT, -- 'monthly', 'yearly', 'commission'
-                        status TEXT DEFAULT 'pending',
-                        tx_hash TEXT,
-                        created_at TIMESTAMP DEFAULT NOW(),
-                        confirmed_at TIMESTAMP
-                    )
-                """)
-                
-                # Client bot payments (end user payments)
-                await conn.execute("""
-                    CREATE TABLE IF NOT EXISTS client_payments (
-                        id SERIAL PRIMARY KEY,
-                        client_bot_id INT,
-                        user_telegram_id BIGINT,
-                        amount_sol DECIMAL(10,4),
-                        plan_type TEXT,
-                        status TEXT DEFAULT 'pending',
-                        tx_hash TEXT,
-                        platform_fee DECIMAL(10,4),
-                        admin_revenue DECIMAL(10,4),
-                        created_at TIMESTAMP DEFAULT NOW(),
-                        confirmed_at TIMESTAMP
-                    )
-                """)
-                
-                # Revenue calculations
-                await conn.execute("""
-                    CREATE TABLE IF NOT EXISTS revenue_logs (
-                        id SERIAL PRIMARY KEY,
-                        admin_id BIGINT,
-                        client_bot_id INT,
-                        period_start DATE,
-                        period_end DATE,
-                        gross_revenue DECIMAL(15,4),
-                        platform_fee DECIMAL(15,4),
-                        net_revenue DECIMAL(15,4),
-                        calculated_at TIMESTAMP DEFAULT NOW()
-                    )
-                """)
-                
-                # Airdrops for end users
-                await conn.execute("""
-                    CREATE TABLE IF NOT EXISTS airdrops (
-                        id SERIAL PRIMARY KEY,
-                        client_bot_id INT,
-                        user_telegram_id BIGINT,
-                        amount DECIMAL(20,8),
-                        tx_hash TEXT,
-                        plan_type TEXT,
-                        status TEXT DEFAULT 'pending',
-                        created_at TIMESTAMP DEFAULT NOW(),
-                        sent_at TIMESTAMP
-                    )
-                """)
-                
-                # Token signals/alerts
-                await conn.execute("""
-                    CREATE TABLE IF NOT EXISTS token_signals (
-                        id SERIAL PRIMARY KEY,
-                        token_address TEXT,
-                        name TEXT,
-                        symbol TEXT,
-                        price_usd DECIMAL(20,10),
-                        liquidity_usd DECIMAL(20,2),
-                        volume_24h DECIMAL(20,2),
-                        detected_at TIMESTAMP DEFAULT NOW(),
-                        posted_to_clients BOOLEAN DEFAULT false
-                    )
-                """)
-                
-            logger.info("✅ Database initialized with SaaS schema")
+            # Platform admins (devs who subscribe)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS platform_admins (
+                    admin_id BIGINT PRIMARY KEY,
+                    username TEXT,
+                    subscription_type TEXT DEFAULT 'none',
+                    subscription_expires TIMESTAMP,
+                    revenue_share_percent DECIMAL(5,2) DEFAULT 80.00,
+                    total_earned DECIMAL(15,4) DEFAULT 0,
+                    total_paid_to_platform DECIMAL(15,4) DEFAULT 0,
+                    api_key TEXT UNIQUE,
+                    webhook_url TEXT,
+                    status TEXT DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    last_payment TIMESTAMP
+                )
+            """)
+            
+            # Client bots (white-label instances)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS client_bots (
+                    bot_id SERIAL PRIMARY KEY,
+                    admin_id BIGINT REFERENCES platform_admins(admin_id),
+                    bot_token TEXT,
+                    bot_username TEXT,
+                    public_channel_id TEXT,
+                    vip_group_id TEXT,
+                    client_wallet TEXT,
+                    vip_price DECIMAL(10,4) DEFAULT 0.5,
+                    whale_price DECIMAL(10,4) DEFAULT 1.0,
+                    premium_price DECIMAL(10,4) DEFAULT 2.5,
+                    status TEXT DEFAULT 'active',
+                    deployed_at TIMESTAMP DEFAULT NOW(),
+                    monthly_revenue DECIMAL(15,4) DEFAULT 0,
+                    total_users INT DEFAULT 0,
+                    paid_users INT DEFAULT 0
+                )
+            """)
+            
+            # End users across all client bots
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS end_users (
+                    user_id BIGINT,
+                    client_bot_id INT REFERENCES client_bots(bot_id),
+                    telegram_id BIGINT,
+                    username TEXT,
+                    plan_type TEXT DEFAULT 'free',
+                    plan_expires TIMESTAMP,
+                    referrals_count INT DEFAULT 0,
+                    total_paid DECIMAL(10,4) DEFAULT 0,
+                    solana_wallet TEXT,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    PRIMARY KEY (client_bot_id, telegram_id)
+                )
+            """)
+            
+            # Platform payments (from admins to you)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS platform_payments (
+                    id SERIAL PRIMARY KEY,
+                    admin_id BIGINT,
+                    amount_sol DECIMAL(10,4),
+                    payment_type TEXT,
+                    status TEXT DEFAULT 'pending',
+                    tx_hash TEXT,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    confirmed_at TIMESTAMP
+                )
+            """)
+            
+            # Client payments (end users to admins)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS client_payments (
+                    id SERIAL PRIMARY KEY,
+                    client_bot_id INT,
+                    user_telegram_id BIGINT,
+                    amount_sol DECIMAL(10,4),
+                    plan_type TEXT,
+                    status TEXT DEFAULT 'pending',
+                    tx_hash TEXT,
+                    platform_fee DECIMAL(10,4),
+                    admin_revenue DECIMAL(10,4),
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    confirmed_at TIMESTAMP
+                )
+            """)
+            
+            # Revenue logs
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS revenue_logs (
+                    id SERIAL PRIMARY KEY,
+                    admin_id BIGINT,
+                    client_bot_id INT,
+                    period_start DATE,
+                    period_end DATE,
+                    gross_revenue DECIMAL(15,4),
+                    platform_fee DECIMAL(15,4),
+                    net_revenue DECIMAL(15,4),
+                    calculated_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            
+            # Token signals
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS token_signals (
+                    id SERIAL PRIMARY KEY,
+                    token_address TEXT,
+                    name TEXT,
+                    symbol TEXT,
+                    price_usd DECIMAL(20,10),
+                    liquidity_usd DECIMAL(20,2),
+                    volume_24h DECIMAL(20,2),
+                    detected_at TIMESTAMP DEFAULT NOW(),
+                    posted_to_clients BOOLEAN DEFAULT false
+                )
+            """)
+            
+            logger.info("✅ Database tables created")
             return True
             
-        except Exception as e:
-            logger.error(f"❌ Database initialization failed: {e}")
-            return False
-    
-    @staticmethod
-    async def get_admin(admin_id: int) -> Optional[Dict]:
-        if not db_pool:
-            return None
+    except Exception as e:
+        logger.error(f"❌ Database initialization failed: {e}")
+        return False
+
+async def get_admin(admin_id: int) -> Optional[Dict[str, Any]]:
+    """Get admin by ID"""
+    if not db_pool:
+        return None
+    try:
         async with db_pool.acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT * FROM platform_admins WHERE admin_id = $1", admin_id
             )
             return dict(row) if row else None
-    
-    @staticmethod
-    async def create_admin(admin_id: int, username: str, sub_type: str, expires: datetime):
-        if not db_pool:
-            return False
+    except Exception as e:
+        logger.error(f"Get admin error: {e}")
+        return None
+
+async def create_or_update_admin(admin_id: int, username: str, sub_type: str, expires: datetime):
+    """Create or update admin subscription"""
+    if not db_pool:
+        return False
+    try:
         async with db_pool.acquire() as conn:
             api_key = f"ice_{admin_id}_{int(datetime.now().timestamp())}"
             await conn.execute("""
@@ -245,93 +249,30 @@ class DatabaseManager:
                 ON CONFLICT (admin_id) DO UPDATE SET
                     subscription_type = $3,
                     subscription_expires = $4,
-                    status = 'active'
+                    status = 'active',
+                    username = $2
             """, admin_id, username, sub_type, expires, api_key)
             return True
-
-# ═══════════════════════════════════════════════════════════════════════
-# REVENUE CALCULATOR
-# ═══════════════════════════════════════════════════════════════════════
-
-class RevenueCalculator:
-    """Calculate and project revenues"""
-    
-    @staticmethod
-    async def get_admin_revenue_projection(admin_id: int) -> Dict:
-        """Project revenue for an admin based on their setup"""
-        if not db_pool:
-            return {}
-        
-        async with db_pool.acquire() as conn:
-            # Get client bots
-            bots = await conn.fetch(
-                "SELECT * FROM client_bots WHERE admin_id = $1 AND status = 'active'",
-                admin_id
-            )
-            
-            total_projected = 0
-            bot_projections = []
-            
-            for bot in bots:
-                # Calculate based on pricing and typical conversion rates
-                vip_price = bot['vip_price']
-                whale_price = bot['whale_price']
-                premium_price = bot['premium_price']
-                
-                # Conservative estimates: 100 users, 5% conversion
-                est_users = 100
-                conversion_rate = 0.05
-                
-                monthly_vip = est_users * conversion_rate * 0.7 * vip_price
-                monthly_whale = est_users * conversion_rate * 0.2 * whale_price
-                monthly_premium = est_users * conversion_rate * 0.1 * premium_price
-                
-                bot_monthly = monthly_vip + monthly_whale + monthly_premium
-                bot_yearly = bot_monthly * 12
-                
-                total_projected += bot_monthly
-                
-                bot_projections.append({
-                    'bot_id': bot['bot_id'],
-                    'username': bot['bot_username'],
-                    'monthly_projection': round(bot_monthly, 2),
-                    'yearly_projection': round(bot_yearly, 2),
-                    'pricing': {
-                        'vip': vip_price,
-                        'whale': whale_price,
-                        'premium': premium_price
-                    }
-                })
-            
-            platform_fee_percent = Config.COMMISSION_PERCENT
-            net_monthly = total_projected * (1 - platform_fee_percent / 100)
-            
-            return {
-                'admin_id': admin_id,
-                'total_bots': len(bots),
-                'gross_monthly': round(total_projected, 2),
-                'platform_fee_percent': platform_fee_percent,
-                'platform_fee_monthly': round(total_projected * platform_fee_percent / 100, 2),
-                'net_monthly': round(net_monthly, 2),
-                'net_yearly': round(net_monthly * 12, 2),
-                'bot_details': bot_projections
-            }
+    except Exception as e:
+        logger.error(f"Create admin error: {e}")
+        return False
 
 # ═══════════════════════════════════════════════════════════════════════
 # TELEGRAM HANDLERS
 # ═══════════════════════════════════════════════════════════════════════
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Main entry point - detects if admin or end user"""
+async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Main entry point"""
     user = update.effective_user
+    logger.info(f"User {user.id} ({user.username}) started bot")
     
-    # Check if this is the master admin
+    # Master admin (you)
     if user.id == Config.ADMIN_ID:
         await show_master_dashboard(update, context)
         return
     
     # Check if registered admin
-    admin = await DatabaseManager.get_admin(user.id)
+    admin = await get_admin(user.id)
     
     if admin and admin.get('subscription_expires') and admin['subscription_expires'] > datetime.now():
         await show_admin_dashboard(update, context, admin)
@@ -339,61 +280,65 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_subscription_offer(update, context)
 
 async def show_master_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show master admin (you) the platform overview"""
-    
-    if not db_pool:
-        await update.message.reply_text("❌ Database error")
-        return
-    
-    async with db_pool.acquire() as conn:
-        stats = await conn.fetchrow("""
-            SELECT 
-                COUNT(*) as total_admins,
-                COUNT(*) FILTER (WHERE subscription_expires > NOW()) as active_admins,
-                COALESCE(SUM(total_paid_to_platform), 0) as total_revenue,
-                COUNT(*) FILTER (WHERE DATE(created_at) = CURRENT_DATE) as new_today
-            FROM platform_admins
-        """)
-        
-        client_stats = await conn.fetchrow("""
-            SELECT 
-                COUNT(*) as total_bots,
-                COALESCE(SUM(monthly_revenue), 0) as client_revenue
-            FROM client_bots
-            WHERE status = 'active'
-        """)
-    
+    """Show master admin dashboard"""
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📊 Revenue Report", callback_data="master_revenue")],
+        [InlineKeyboardButton("📊 Platform Stats", callback_data="master_stats")],
+        [InlineKeyboardButton("💰 Revenue Report", callback_data="master_revenue")],
         [InlineKeyboardButton("👥 Manage Admins", callback_data="master_admins")],
         [InlineKeyboardButton("🤖 Client Bots", callback_data="master_bots")],
-        [InlineKeyboardButton("💰 Withdraw Earnings", callback_data="master_withdraw")],
         [InlineKeyboardButton("📢 Broadcast", callback_data="master_broadcast")]
     ])
     
     text = f"""👑 MASTER DASHBOARD - {Config.PLATFORM_NAME}
 
-📊 PLATFORM STATS:
-• Total Admins: {stats['total_admins']}
-• Active Subs: {stats['active_admins']}
-• Client Bots: {client_stats['total_bots']}
-• New Today: {stats['new_today']}
+🚀 Platform Status: ONLINE
+💳 Your Wallet: `{Config.MASTER_WALLET[:15]}...`
 
-💰 REVENUE:
-• Your Total: {stats['total_revenue']:.2f} SOL
-• Client Volume: {client_stats['client_revenue']:.2f} SOL
-• Platform Fees: {stats['total_revenue'] * Config.COMMISSION_PERCENT / 100:.2f} SOL
+📊 Quick Stats:
+• Use buttons below for detailed reports
+• All revenue flows to your wallet
+• 20% commission on all client earnings
 
-🎯 QUICK ACTIONS:"""
+⚡ Platform is LIVE and ready!"""
+    
+    await update.message.reply_text(text, reply_markup=keyboard, parse_mode='Markdown')
+
+async def show_admin_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE, admin: Dict):
+    """Show subscriber admin dashboard"""
+    days_left = (admin['subscription_expires'] - datetime.now()).days if admin['subscription_expires'] else 0
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🚀 Deploy New Bot", callback_data="deploy_bot")],
+        [InlineKeyboardButton("⚙️ My Bots", callback_data="my_bots")],
+        [InlineKeyboardButton("📊 Revenue Stats", callback_data="my_revenue")],
+        [InlineKeyboardButton("🎁 Airdrop Manager", callback_data="airdrop_mgr")],
+        [InlineKeyboardButton("💰 Withdraw Earnings", callback_data="withdraw")],
+        [InlineKeyboardButton("🔄 Renew Subscription", callback_data="renew_sub")]
+    ])
+    
+    text = f"""⚡ ADMIN DASHBOARD
+
+👤 Status: {admin.get('subscription_type', 'UNKNOWN').upper()}
+⏰ Expires: {days_left} days
+💰 Total Earned: {admin.get('total_earned', 0):.2f} SOL
+📊 Revenue Share: {admin.get('revenue_share_percent', 80)}%
+
+🎯 Your Tools:
+• Deploy unlimited bots
+• Set your own prices
+• Automated user payments
+• Token airdrop system
+• Real-time analytics
+
+🚀 Start deploying your first bot!"""
     
     await update.message.reply_text(text, reply_markup=keyboard)
 
 async def show_subscription_offer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show subscription offer to potential admins"""
-    
+    """Show subscription offer to new users"""
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("💎 Monthly - 5 SOL/month", callback_data="sub_monthly")],
-        [InlineKeyboardButton("👑 Yearly - 50 SOL/year (Save 10)", callback_data="sub_yearly")],
+        [InlineKeyboardButton(f"💎 Monthly - {Config.SAAS_MONTHLY} SOL", callback_data="sub_monthly")],
+        [InlineKeyboardButton(f"👑 Yearly - {Config.SAAS_YEARLY} SOL (Save 10)", callback_data="sub_yearly")],
         [InlineKeyboardButton("📊 Revenue Calculator", callback_data="calc_revenue")],
         [InlineKeyboardButton("❓ How It Works", callback_data="how_it_works")],
         [InlineKeyboardButton("💬 Support", url=f"https://t.me/{Config.SUPPORT_USERNAME}")]
@@ -404,18 +349,19 @@ async def show_subscription_offer(update: Update, context: ContextTypes.DEFAULT_
 Deploy your own token alert bot & earn SOL!
 
 💎 WHAT YOU GET:
-• White-label Telegram bot
-• Automated token alerts (DexScreener)
-• Subscription management
-• Referral system
-• Airdrop distribution tools
-• Revenue dashboard
+✅ White-label Telegram bot
+✅ Automated token alerts (DexScreener)
+✅ Subscription management system
+✅ Referral system built-in
+✅ Airdrop distribution tools
+✅ Revenue dashboard
+✅ 24/7 automated income
 
 💰 YOUR EARNINGS:
-• Keep 80% of all user payments
-• Set your own prices
-• Monthly airdrops to your users
-• 24/7 automated income
+• Keep {100 - Config.COMMISSION_PERCENT}% of all user payments
+• Set your own prices (VIP/Whale/Premium)
+• Monthly airdrops boost retention
+• Scale to unlimited users
 
 📊 PRICING:
 • Monthly: {Config.SAAS_MONTHLY} SOL
@@ -427,119 +373,188 @@ Tap below to start 👇"""
     
     await update.message.reply_text(text, reply_markup=keyboard)
 
-async def show_admin_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE, admin: Dict):
-    """Show registered admin their dashboard"""
-    
-    days_left = (admin['subscription_expires'] - datetime.now()).days
-    
-    # Get revenue projection
-    projection = await RevenueCalculator.get_admin_revenue_projection(admin['admin_id'])
-    
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🚀 Deploy New Bot", callback_data="deploy_bot")],
-        [InlineKeyboardButton("📊 My Revenue", callback_data="my_revenue")],
-        [InlineKeyboardButton("⚙️ Manage Bots", callback_data="my_bots")],
-        [InlineKeyboardButton("🎁 Airdrop Tokens", callback_data="manage_airdrops")],
-        [InlineKeyboardButton("💰 Withdraw", callback_data="withdraw_earnings")],
-        [InlineKeyboardButton("🔄 Renew Subscription", callback_data="renew_sub")]
-    ])
-    
-    text = f"""⚡ ADMIN DASHBOARD
-
-👤 Status: {admin['subscription_type'].upper()}
-⏰ Expires: {days_left} days
-💰 Total Earned: {admin['total_earned']:.2f} SOL
-
-📊 PROJECTIONS:
-• Monthly Potential: {projection.get('gross_monthly', 0):.2f} SOL
-• Your Share (80%): {projection.get('net_monthly', 0):.2f} SOL
-• Active Bots: {projection.get('total_bots', 0)}
-
-🎯 QUICK ACTIONS:"""
-    
-    await update.message.reply_text(text, reply_markup=keyboard)
-
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle all callback queries"""
+    """Handle callback queries"""
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
     
     # Master admin buttons
     if user_id == Config.ADMIN_ID:
-        if query.data == "master_revenue":
+        if query.data == "master_stats":
+            await show_master_stats(query)
+        elif query.data == "master_revenue":
             await show_master_revenue(query)
         elif query.data == "master_admins":
-            await show_all_admins(query)
-        elif query.data == "calc_revenue":
-            await show_revenue_calculator(query, user_id)
+            await show_master_admins(query)
         return
     
-    # Regular admin buttons
+    # Regular buttons
     if query.data == "calc_revenue":
         await show_revenue_calculator(query, user_id)
     elif query.data == "sub_monthly":
-        await initiate_subscription(query, user_id, 'monthly')
+        await initiate_subscription(query, user_id, 'monthly', Config.SAAS_MONTHLY)
     elif query.data == "sub_yearly":
-        await initiate_subscription(query, user_id, 'yearly')
+        await initiate_subscription(query, user_id, 'yearly', Config.SAAS_YEARLY)
+    elif query.data == "how_it_works":
+        await show_how_it_works(query)
     elif query.data == "deploy_bot":
         await start_bot_deployment(query, user_id)
     elif query.data == "my_revenue":
         await show_my_revenue(query, user_id)
-    elif query.data == "how_it_works":
-        await show_how_it_works(query)
+
+async def show_master_stats(query):
+    """Show platform statistics to master"""
+    if not db_pool:
+        await query.message.edit_text("❌ Database not connected")
+        return
+    
+    try:
+        async with db_pool.acquire() as conn:
+            stats = await conn.fetchrow("""
+                SELECT 
+                    COUNT(*) as total_admins,
+                    COUNT(*) FILTER (WHERE subscription_expires > NOW()) as active_admins,
+                    COALESCE(SUM(total_paid_to_platform), 0) as total_revenue
+                FROM platform_admins
+            """)
+            
+            bot_stats = await conn.fetchrow("""
+                SELECT COUNT(*) as total_bots FROM client_bots WHERE status = 'active'
+            """)
+        
+        text = f"""📊 PLATFORM STATISTICS
+
+👥 Total Admins: {stats['total_admins']}
+✅ Active Subs: {stats['active_admins']}
+🤖 Active Bots: {bot_stats['total_bots']}
+
+💰 Total Revenue: {stats['total_revenue']:.2f} SOL
+💳 Your Wallet: `{Config.MASTER_WALLET[:20]}...`
+
+🚀 Platform is running smoothly!"""
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 Back", callback_data="master_main")]
+        ])
+        
+        await query.message.edit_text(text, reply_markup=keyboard, parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Stats error: {e}")
+        await query.message.edit_text("❌ Error loading stats")
+
+async def show_master_revenue(query):
+    """Show revenue breakdown"""
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💰 Check Wallet", url=f"https://solscan.io/account/{Config.MASTER_WALLET}")],
+        [InlineKeyboardButton("📊 Detailed Report", callback_data="revenue_detail")],
+        [InlineKeyboardButton("🔙 Back", callback_data="master_main")]
+    ])
+    
+    text = f"""💰 REVENUE DASHBOARD
+
+Your Master Wallet:
+`{Config.MASTER_WALLET}`
+
+🔗 View on Solscan for live balance
+
+Revenue Streams:
+• SaaS Subscriptions: 100% to you
+• Client Commissions: 20% of their earnings
+• Platform Fees: Automatic collection
+
+Tap below to view your wallet 👇"""
+    
+    await query.message.edit_text(text, reply_markup=keyboard, parse_mode='Markdown')
+
+async def show_master_admins(query):
+    """List all platform admins"""
+    if not db_pool:
+        await query.message.edit_text("❌ Database error")
+        return
+    
+    try:
+        async with db_pool.acquire() as conn:
+            admins = await conn.fetch("""
+                SELECT admin_id, username, subscription_type, subscription_expires, status
+                FROM platform_admins
+                ORDER BY created_at DESC
+                LIMIT 10
+            """)
+        
+        if not admins:
+            await query.message.edit_text("👥 No admins yet")
+            return
+        
+        text = "👥 PLATFORM ADMINS\n\n"
+        for admin in admins:
+            status = "🟢" if admin['status'] == 'active' else "🔴"
+            expires = admin['subscription_expires'].strftime('%Y-%m-%d') if admin['subscription_expires'] else 'N/A'
+            text += f"{status} {admin['username'] or admin['admin_id']}\n"
+            text += f"   Plan: {admin['subscription_type']} | Expires: {expires}\n\n"
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 Back", callback_data="master_main")]
+        ])
+        
+        await query.message.edit_text(text, reply_markup=keyboard)
+        
+    except Exception as e:
+        logger.error(f"Admins error: {e}")
+        await query.message.edit_text("❌ Error loading admins")
 
 async def show_revenue_calculator(query, user_id):
     """Interactive revenue calculator"""
+    # Example calculation
+    users = 200
+    conversion = 0.05
+    vip = Config.DEFAULT_VIP
+    whale = Config.DEFAULT_WHALE
+    premium = Config.DEFAULT_PREMIUM
+    
+    monthly_gross = users * conversion * ((0.7 * vip) + (0.2 * whale) + (0.1 * premium))
+    platform_fee = monthly_gross * Config.COMMISSION_PERCENT / 100
+    net_monthly = monthly_gross - platform_fee - Config.SAAS_MONTHLY
     
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("💎 Set Pricing & Calculate", callback_data="set_calc_pricing")],
+        [InlineKeyboardButton("💎 Subscribe Now", callback_data="sub_monthly")],
         [InlineKeyboardButton("🔙 Back", callback_data="main_menu")]
     ])
-    
-    # Default calculation
-    users = 200
-    conversion = 0.05  # 5%
-    vip_price = Config.DEFAULT_VIP
-    whale_price = Config.DEFAULT_WHALE
-    premium_price = Config.DEFAULT_PREMIUM
-    
-    monthly = users * conversion * ((0.7 * vip_price) + (0.2 * whale_price) + (0.1 * premium_price))
-    yearly = monthly * 12
-    net_monthly = monthly * 0.8  # After 20% platform fee
     
     text = f"""📊 REVENUE CALCULATOR
 
 Assumptions:
-• {users} free users in your channel
-• {int(conversion*100)}% buy subscription
-• Pricing: VIP {vip_price} SOL, Whale {whale_price} SOL, Premium {premium_price} SOL
+• {users} free users
+• {int(conversion*100)}% conversion rate
+• Your pricing: VIP {vip} SOL, Whale {whale} SOL, Premium {premium} SOL
 
-💰 PROJECTIONS:
-• Monthly Gross: {monthly:.2f} SOL
-• Platform Fee (20%): {monthly * 0.2:.2f} SOL
-• YOUR EARNINGS: {net_monthly:.2f} SOL/month
-• Yearly: {net_monthly * 12:.2f} SOL
+💰 MONTHLY PROJECTION:
+• Gross Revenue: {monthly_gross:.2f} SOL
+• Platform Fee ({Config.COMMISSION_PERCENT}%): {platform_fee:.2f} SOL
+• SaaS Cost: {Config.SAAS_MONTHLY} SOL
+• 🎯 YOUR PROFIT: {net_monthly:.2f} SOL/month
 
-🎯 With just 200 users, you earn {net_monthly:.2f} SOL monthly!
+📈 With 200 users, you profit {net_monthly:.2f} SOL monthly!
 
-Customize your pricing below:"""
+Ready to start? 👇"""
     
     await query.message.edit_text(text, reply_markup=keyboard)
 
-async def initiate_subscription(query, user_id: int, sub_type: str):
-    """Start subscription payment process"""
-    
-    amount = Config.SAAS_MONTHLY if sub_type == 'monthly' else Config.SAAS_YEARLY
+async def initiate_subscription(query, user_id: int, sub_type: str, amount: float):
+    """Create subscription payment request"""
     days = 30 if sub_type == 'monthly' else 365
     
     # Create payment record
     if db_pool:
-        async with db_pool.acquire() as conn:
-            await conn.execute("""
-                INSERT INTO platform_payments (admin_id, amount_sol, payment_type, status)
-                VALUES ($1, $2, $3, 'pending')
-            """, user_id, amount, sub_type)
+        try:
+            async with db_pool.acquire() as conn:
+                await conn.execute("""
+                    INSERT INTO platform_payments (admin_id, amount_sol, payment_type, status)
+                    VALUES ($1, $2, $3, 'pending')
+                """, user_id, amount, sub_type)
+        except Exception as e:
+            logger.error(f"Payment record error: {e}")
     
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ I've Sent Payment", callback_data=f"confirm_sub_{sub_type}")],
@@ -553,20 +568,24 @@ async def initiate_subscription(query, user_id: int, sub_type: str):
 💰 Amount: {amount} SOL
 
 ═══════════════════
-SEND TO: `{Config.MASTER_WALLET}`
+SEND TO:
+`{Config.MASTER_WALLET}`
 ═══════════════════
 
-⚠️ Send EXACTLY {amount} SOL
+⚠️ IMPORTANT:
+• Send EXACTLY {amount} SOL
+• Use Solana network only
+• Transaction must confirm
+
 ✅ After sending, click button below
 🛰 Auto-verification in 10-30s
 
-Your access activates immediately after confirmation!"""
+Your bot deploys immediately after confirmation!"""
     
     await query.message.edit_text(text, reply_markup=keyboard, parse_mode='Markdown')
 
 async def show_how_it_works(query):
-    """Explain the SaaS business model"""
-    
+    """Explain the business model"""
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("💎 Start Subscription", callback_data="sub_monthly")],
         [InlineKeyboardButton("🔙 Back", callback_data="main_menu")]
@@ -575,22 +594,22 @@ async def show_how_it_works(query):
     text = f"""❓ HOW {Config.PLATFORM_NAME} WORKS
 
 1️⃣ SUBSCRIBE TO PLATFORM
-   • Pay {Config.SAAS_MONTHLY} SOL/month or {Config.SAAS_YEARLY} SOL/year
-   • Get access to bot deployment dashboard
+   • Pay {Config.SAAS_MONTHLY} SOL/month
+   • Get instant access to dashboard
 
-2️⃣ DEPLOY YOUR BOT (5 minutes)
+2️⃣ DEPLOY YOUR BOT (5 min)
    • We create your white-label bot
-   • Connect your Telegram channel/group
+   • Connect your Telegram channel
    • Set your custom pricing
 
 3️⃣ ATTRACT USERS
-   • Users join your channel
    • Bot posts free token alerts
-   • Some upgrade to VIP for early access
+   • Users upgrade for VIP access
+   • Referral system grows users
 
 4️⃣ EARN AUTOMATICALLY
    • Users pay YOUR wallet directly
-   • You keep 80%, we take 20%
+   • You keep {100 - Config.COMMISSION_PERCENT}%, we take {Config.COMMISSION_PERCENT}%
    • Monthly airdrops boost retention
 
 5️⃣ SCALE & PROFIT
@@ -598,144 +617,44 @@ async def show_how_it_works(query):
    • Build your brand
    • Passive SOL income 24/7
 
-💰 REAL EXAMPLE:
+💰 EXAMPLE:
 • 500 users → 25 pay {Config.DEFAULT_VIP} SOL = 12.5 SOL
-• Your share (80%) = 10 SOL/month
-• Minus platform fee ({Config.SAAS_MONTHLY} SOL) = 9 SOL profit
+• Your share (80%) = 10 SOL
+• Minus platform fee = 9 SOL profit
 
-Ready to start? 👇"""
+Ready? 👇"""
     
     await query.message.edit_text(text, reply_markup=keyboard)
 
-# ═══════════════════════════════════════════════════════════════════════
-# TOKEN ALERT SYSTEM (For all client bots)
-# ═══════════════════════════════════════════════════════════════════════
+async def start_bot_deployment(query, user_id: int):
+    """Start the bot deployment process"""
+    await query.message.edit_text(
+        "🚀 BOT DEPLOYMENT\n\n"
+        "To deploy your white-label bot, please provide:\n\n"
+        "1. Your bot token (from @BotFather)\n"
+        "2. Your public channel ID\n"
+        "3. Your VIP group ID\n"
+        "4. Your Solana wallet for payments\n\n"
+        "Send details in format:\n"
+        "/deploy BOT_TOKEN CHANNEL_ID GROUP_ID WALLET\n\n"
+        "Example:\n"
+        "/deploy 123456:ABC... -1001234567890 -1009876543210 HxmywH2g...",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 Back", callback_data="main_menu")]
+        ])
+    )
 
-class AlertDistributor:
-    """Distribute token alerts to all active client bots"""
-    
-    @staticmethod
-    async def fetch_and_distribute():
-        """Fetch new tokens and send to all client channels"""
-        try:
-            async with aiohttp.ClientSession() as session:
-                url = "https://api.dexscreener.com/token-profiles/latest/v1"
-                
-                async with session.get(url, timeout=15) as resp:
-                    if resp.status != 200:
-                        return
-                    
-                    data = await resp.json()
-                    if not data or not isinstance(data, list):
-                        return
-                    
-                    # Get first new token
-                    for profile in data[:3]:  # Top 3 new tokens
-                        token_addr = profile.get('tokenAddress')
-                        if not token_addr:
-                            continue
-                        
-                        # Check if already posted
-                        if db_pool:
-                            async with db_pool.acquire() as conn:
-                                existing = await conn.fetchval(
-                                    "SELECT 1 FROM token_signals WHERE token_address = $1",
-                                    token_addr
-                                )
-                                if existing:
-                                    continue
-                        
-                        # Get detailed data
-                        detail_url = f"https://api.dexscreener.com/latest/dex/tokens/{token_addr}"
-                        
-                        async with session.get(detail_url, timeout=15) as dresp:
-                            if dresp.status != 200:
-                                continue
-                            
-                            details = await dresp.json()
-                            if not details.get('pairs'):
-                                continue
-                            
-                            pair = details['pairs'][0]
-                            base = pair.get('baseToken', {})
-                            
-                            name = base.get('name', 'Unknown')[:30]
-                            symbol = base.get('symbol', '???')[:10]
-                            price = float(pair.get('priceUsd', 0))
-                            liq = pair.get('liquidity', {}).get('usd', 0)
-                            vol = pair.get('volume', {}).get('h24', 0)
-                            
-                            # Clean
-                            name = name.replace('*', '').replace('_', '')
-                            symbol = symbol.replace('*', '').replace('_', '')
-                            
-                            # Save to DB
-                            if db_pool:
-                                async with db_pool.acquire() as conn:
-                                    await conn.execute("""
-                                        INSERT INTO token_signals 
-                                        (token_address, name, symbol, price_usd, liquidity_usd, volume_24h)
-                                        VALUES ($1, $2, $3, $4, $5, $6)
-                                    """, token_addr, name, symbol, price, liq, vol)
-                            
-                            # Distribute to all active client bots
-                            await AlertDistributor.distribute_to_clients(
-                                name, symbol, price, liq, vol, pair.get('url', ''), token_addr
-                            )
-                            
-        except Exception as e:
-            logger.error(f"Alert distribution error: {e}")
-    
-    @staticmethod
-    async def distribute_to_clients(name, symbol, price, liq, vol, chart_url, token_addr):
-        """Send alert to all client public channels"""
-        if not db_pool:
-            return
-        
-        async with db_pool.acquire() as conn:
-            clients = await conn.fetch(
-                "SELECT * FROM client_bots WHERE status = 'active'"
-            )
-        
-        for client in clients:
-            try:
-                message = f"""🚀 NEW TOKEN ALERT
-
-💎 {name} (${symbol})
-💵 Price: ${price:.8f}
-💧 Liquidity: ${liq:,.0f}
-📊 24h Volume: ${vol:,.0f}
-
-⏰ Just launched on Solana
-
-⚠️ DYOR - Not financial advice
-
-💎 Get EARLY access: @{client['bot_username']}"""
-                
-                # Send to client's public channel
-                await application.bot.send_message(
-                    client['public_channel_id'],
-                    message,
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("🔥 Get VIP Alerts", url=f"https://t.me/{client['bot_username']}")]
-                    ])
-                )
-                
-                # Update stats
-                async with db_pool.acquire() as conn:
-                    await conn.execute(
-                        "UPDATE client_bots SET total_users = total_users + 1 WHERE bot_id = $1",
-                        client['bot_id']
-                    )
-                
-            except Exception as e:
-                logger.error(f"Failed to send to client {client['bot_id']}: {e}")
-
-async def alert_worker():
-    """Background worker to distribute alerts"""
-    while True:
-        await AlertDistributor.fetch_and_distribute()
-        await asyncio.sleep(Config.SIGNAL_INTERVAL * 60)
+async def show_my_revenue(query, user_id: int):
+    """Show admin their revenue stats"""
+    await query.message.edit_text(
+        "📊 YOUR REVENUE\n\n"
+        "Revenue stats will appear here once you have active bots.\n\n"
+        "Deploy your first bot to start earning!",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🚀 Deploy Bot", callback_data="deploy_bot")],
+            [InlineKeyboardButton("🔙 Back", callback_data="main_menu")]
+        ])
+    )
 
 # ═══════════════════════════════════════════════════════════════════════
 # FLASK WEB SERVER
@@ -743,18 +662,21 @@ async def alert_worker():
 
 @app.route("/")
 def health_check():
+    """Health check endpoint"""
     return jsonify({
-        "status": "ICEGODS Platform Active",
+        "status": "ICEGODS Platform LIVE",
         "platform": Config.PLATFORM_NAME,
         "master_wallet": Config.MASTER_WALLET,
         "saas_price_monthly": Config.SAAS_MONTHLY,
-        "commission": Config.COMMISSION_PERCENT,
+        "commission_percent": Config.COMMISSION_PERCENT,
+        "database_connected": db_pool is not None,
+        "bot_initialized": bot_app is not None,
         "timestamp": datetime.now().isoformat()
     })
 
 @app.route("/api/stats")
 def api_stats():
-    """Public API for stats"""
+    """Public API stats"""
     return jsonify({
         "platform": Config.PLATFORM_NAME,
         "pricing": {
@@ -772,10 +694,11 @@ def api_stats():
         ]
     })
 
-@app.route(f"/webhook/{Config.BOT_TOKEN.split(':')[1] if Config.BOT_TOKEN else 'invalid'}", methods=['POST'])
+@app.route(f"/webhook/{Config.BOT_TOKEN.split(':')[1]}", methods=['POST'])
 def webhook():
     """Handle Telegram webhooks"""
-    if not application:
+    if not bot_app:
+        logger.error("Bot not initialized")
         return jsonify({"error": "Bot not ready"}), 503
     
     try:
@@ -783,8 +706,14 @@ def webhook():
         if not data:
             return jsonify({"error": "No data"}), 400
         
-        update = Update.de_json(data, application.bot)
-        asyncio.create_task(application.process_update(update))
+        update = Update.de_json(data, bot_app.bot)
+        
+        # Process in bot's event loop
+        future = asyncio.run_coroutine_threadsafe(
+            process_update(update), 
+            bot_loop
+        )
+        future.result(timeout=10)
         
         return jsonify({"ok": True}), 200
         
@@ -792,48 +721,97 @@ def webhook():
         logger.error(f"Webhook error: {e}")
         return jsonify({"error": str(e)}), 500
 
+async def process_update(update: Update):
+    """Process Telegram update"""
+    try:
+        await bot_app.process_update(update)
+    except Exception as e:
+        logger.error(f"Process update error: {e}")
+
 # ═══════════════════════════════════════════════════════════════════════
-# MAIN INITIALIZATION
+# BOT INITIALIZATION
+# ═══════════════════════════════════════════════════════════════════════
+
+def init_bot():
+    """Initialize bot in background thread"""
+    global bot_app, bot_loop
+    
+    logger.info("🤖 Initializing bot...")
+    
+    # Create new event loop for this thread
+    bot_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(bot_loop)
+    
+    async def setup():
+        global bot_app
+        
+        # Initialize database
+        if not await init_database():
+            logger.error("❌ Database init failed")
+            return
+        
+        # Build bot application
+        try:
+            bot_app = Application.builder().token(Config.BOT_TOKEN).build()
+            bot_app.add_handler(CommandHandler("start", start_handler))
+            bot_app.add_handler(CallbackQueryHandler(button_handler))
+            
+            # Initialize
+            await bot_app.initialize()
+            
+            # Set webhook
+            if Config.WEBHOOK_URL:
+                webhook_path = f"/webhook/{Config.BOT_TOKEN.split(':')[1]}"
+                full_url = f"{Config.WEBHOOK_URL}{webhook_path}"
+                await bot_app.bot.set_webhook(url=full_url)
+                logger.info(f"✅ Webhook set: {full_url}")
+            
+            # Start bot
+            await bot_app.start()
+            logger.info("✅ Bot started successfully!")
+            
+        except Exception as e:
+            logger.error(f"❌ Bot setup error: {e}")
+    
+    # Run setup in event loop
+    try:
+        bot_loop.run_until_complete(setup())
+        
+        # Keep loop running
+        while True:
+            bot_loop.run_forever()
+            
+    except Exception as e:
+        logger.error(f"❌ Bot loop error: {e}")
+
+# ═══════════════════════════════════════════════════════════════════════
+# MAIN ENTRY POINT
 # ═══════════════════════════════════════════════════════════════════════
 
 def main():
-    global application
-    
+    """Main entry point"""
     logger.info(f"🚀 Starting {Config.PLATFORM_NAME}...")
+    logger.info(f"🔧 Config: ADMIN_ID={Config.ADMIN_ID}, PORT={Config.PORT}")
     
-    # Initialize database
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    # Start bot in background thread
+    bot_thread = threading.Thread(target=init_bot, daemon=True)
+    bot_thread.start()
     
-    if not loop.run_until_complete(DatabaseManager.init()):
-        logger.error("Database failed to initialize")
-        return
+    # Wait for bot to initialize
+    import time
+    time.sleep(3)
     
-    # Build application
-    application = Application.builder().token(Config.BOT_TOKEN).build()
+    # Start Flask server
+    logger.info(f"🌐 Starting Flask server on port {Config.PORT}...")
     
-    # Add handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(button_handler))
-    
-    # Start alert worker in background
-    loop.create_task(alert_worker())
-    
-    # Initialize bot
-    application.initialize()
-    
-    # Set webhook
-    if Config.WEBHOOK_URL:
-        webhook_path = f"/webhook/{Config.BOT_TOKEN.split(':')[1]}"
-        full_url = f"{Config.WEBHOOK_URL}{webhook_path}"
-        application.bot.set_webhook(url=full_url)
-        logger.info(f"✅ Webhook set: {full_url}")
-    
-    application.start()
-    logger.info("✅ Bot is running!")
-    
-    # Run Flask server
-    app.run(host="0.0.0.0", port=Config.PORT, threaded=True)
+    # Use Waitress for production (if available), else Flask dev
+    try:
+        from waitress import serve
+        logger.info("Using Waitress WSGI server")
+        serve(app, host="0.0.0.0", port=Config.PORT, threads=4)
+    except ImportError:
+        logger.warning("Waitress not available, using Flask dev server")
+        app.run(host="0.0.0.0", port=Config.PORT, threaded=True)
 
 if __name__ == "__main__":
     main()
