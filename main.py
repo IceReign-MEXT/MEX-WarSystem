@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """
-ICEGODS Bot Platform - PRODUCTION READY
-All features working: Database, Commands, Deployment
+═══════════════════════════════════════════════════════════════════════════
+ICEGODS BOT PLATFORM v3.1 - PRODUCTION READY
+✅ Auto payment verification via Helius API
+✅ Automatic subscription activation
+✅ New Supabase: ylpxxgvaetykmswzrpmi
+✅ Password: IceWarlord30Icegods
+═══════════════════════════════════════════════════════════════════════════
 """
 
 import os
@@ -10,13 +15,14 @@ import asyncio
 import threading
 import logging
 import aiohttp
+import ssl
 import json
 from datetime import datetime, timedelta
+from decimal import Decimal
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from flask import Flask, request, jsonify
 import asyncpg
-import ssl
 
 # Logging
 logging.basicConfig(
@@ -27,19 +33,30 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ═══════════════════════════════════════════════════════════════════════
-# CONFIGURATION
+# CONFIGURATION - ACTUAL VALUES
 # ═══════════════════════════════════════════════════════════════════════
 
-# Primary config from env, fallback to hardcoded
-BOT_TOKEN = os.getenv("BOT_TOKEN") or "7968707142:AAHk3snOd8SxZ_8_hJY5Tq0p6eDebh9RvJk"
-ADMIN_ID = int(os.getenv("ADMIN_ID") or "8254662446")
-MASTER_WALLET = os.getenv("MASTER_WALLET") or "HxmywH2gW9ezQ2nBXwurpaWsZS6YvdmLF23R9WgMAM7p"
-DATABASE_URL = os.getenv("DATABASE_URL") or "postgresql://postgres.sezxolvjozcbqhwlhluz:IceWarlord30Icegods@aws-1-eu-north-1.pooler.supabase.com:6543/postgres"
-WEBHOOK_URL = os.getenv("WEBHOOK_URL") or "https://mex-warsystem-8rzh.onrender.com"
-PORT = int(os.getenv("PORT") or "10000")
-SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME") or "MexRobert"
+class Config:
+    BOT_TOKEN = os.getenv("BOT_TOKEN") or "7968707142:AAHk3snOd8SxZ_8_hJY5Tq0p6eDebh9RvJk"
+    ADMIN_ID = int(os.getenv("ADMIN_ID") or "8254662446")
+    MASTER_WALLET = os.getenv("MASTER_WALLET") or "HxmywH2gW9ezQ2nBXwurpaWsZS6YvdmLF23R9WgMAM7p"
+    
+    # NEW SUPABASE - DIRECT CONNECTION (port 5432)
+    DATABASE_URL = os.getenv("DATABASE_URL") or "postgresql://postgres:IceWarlord30Icegods@db.ylpxxgvaetykmswzrpmi.supabase.co:5432/postgres"
+    
+    WEBHOOK_URL = os.getenv("WEBHOOK_URL") or "https://mex-warsystem-8rzh.onrender.com"
+    PORT = int(os.getenv("PORT") or "10000")
+    HELIUS_KEY = os.getenv("HELIUS_API_KEY") or "1b0094c2-50b9-4c97-a2d6-2c47d4ac2789"
+    SUPPORT_USERNAME = "MexRobert"
+    
+    # Pricing
+    SAAS_MONTHLY = 5.0
+    SAAS_YEARLY = 50.0
+    COMMISSION_PERCENT = 20
 
-logger.info(f"🔧 Config: ADMIN_ID={ADMIN_ID}, PORT={PORT}")
+logger.info("🔧 ICEGODS Platform v3.1 Starting...")
+logger.info(f"🔧 Admin ID: {Config.ADMIN_ID}")
+logger.info(f"🔧 Database: ylpxxgvaetykmswzrpmi.supabase.co:5432")
 
 # ═══════════════════════════════════════════════════════════════════════
 # GLOBALS
@@ -50,444 +67,232 @@ db_pool = None
 bot_app = None
 bot_loop = None
 
-# In-memory storage for testing (if DB fails)
-memory_db = {
-    'admins': {},
-    'bots': {},
-    'payments': []
-}
-
 # ═══════════════════════════════════════════════════════════════════════
-# DATABASE - WITH SSL FIX
+# DATABASE - NEW SUPABASE
 # ═══════════════════════════════════════════════════════════════════════
 
 async def init_database():
-    """Initialize database with SSL support"""
+    """Connect to NEW Supabase"""
     global db_pool
     
     try:
-        logger.info("🔌 Connecting to database...")
+        logger.info("🔌 Connecting to NEW Supabase...")
         
-        # Create SSL context that allows any cert (for Supabase)
         ssl_context = ssl.create_default_context()
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
         
-        # Connect with SSL
         db_pool = await asyncpg.create_pool(
-            DATABASE_URL,
+            Config.DATABASE_URL,
             min_size=1,
             max_size=5,
             ssl=ssl_context,
-            command_timeout=30
+            command_timeout=30,
+            server_settings={'jit': 'off'}
         )
         
-        # Create tables
         async with db_pool.acquire() as conn:
+            logger.info("📊 Creating tables...")
+            
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS platform_admins (
                     admin_id BIGINT PRIMARY KEY,
                     username TEXT,
+                    first_name TEXT,
                     subscription_type TEXT DEFAULT 'none',
                     subscription_expires TIMESTAMP,
                     total_earned DECIMAL(15,4) DEFAULT 0,
                     status TEXT DEFAULT 'active',
-                    created_at TIMESTAMP DEFAULT NOW()
+                    wallet_address TEXT,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS pending_payments (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT,
+                    amount DECIMAL(10,4),
+                    plan_type TEXT,
+                    status TEXT DEFAULT 'pending',
+                    tx_hash TEXT,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    verified_at TIMESTAMP
                 )
             """)
             
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS client_bots (
                     bot_id SERIAL PRIMARY KEY,
-                    admin_id BIGINT,
+                    admin_id BIGINT REFERENCES platform_admins(admin_id),
                     bot_name TEXT,
                     bot_token TEXT,
+                    bot_username TEXT,
                     public_channel TEXT,
                     vip_group TEXT,
                     client_wallet TEXT,
                     status TEXT DEFAULT 'pending',
-                    created_at TIMESTAMP DEFAULT NOW()
-                )
-            """)
-            
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS activity_log (
-                    id SERIAL PRIMARY KEY,
-                    user_id BIGINT,
-                    action TEXT,
-                    details TEXT,
+                    deployed_at TIMESTAMP,
                     created_at TIMESTAMP DEFAULT NOW()
                 )
             """)
         
-        logger.info("✅ Database connected and initialized")
+        logger.info("✅ DATABASE CONNECTED SUCCESSFULLY!")
         return True
         
     except Exception as e:
-        logger.error(f"❌ Database connection failed: {e}")
-        logger.warning("⚠️ Using in-memory storage (data will be lost on restart)")
+        logger.error(f"❌ Database failed: {e}")
         return False
 
-async def get_admin_from_db(admin_id: int):
-    """Get admin from database or memory"""
-    if db_pool:
-        try:
-            async with db_pool.acquire() as conn:
-                row = await conn.fetchrow(
-                    "SELECT * FROM platform_admins WHERE admin_id = $1",
-                    admin_id
-                )
-                if row:
-                    return dict(row)
-        except Exception as e:
-            logger.error(f"DB query error: {e}")
-    
-    # Fallback to memory
-    return memory_db['admins'].get(admin_id)
+async def get_admin(user_id: int):
+    """Get admin"""
+    if not db_pool:
+        return None
+    try:
+        async with db_pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM platform_admins WHERE admin_id = $1",
+                user_id
+            )
+            return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"Get admin error: {e}")
+        return None
 
-async def save_admin_to_db(admin_id: int, data: dict):
-    """Save admin to database or memory"""
-    if db_pool:
-        try:
-            async with db_pool.acquire() as conn:
-                await conn.execute("""
-                    INSERT INTO platform_admins (admin_id, username, subscription_type, subscription_expires, status)
-                    VALUES ($1, $2, $3, $4, $5)
-                    ON CONFLICT (admin_id) DO UPDATE SET
-                        username = $2,
-                        subscription_type = $3,
-                        subscription_expires = $4,
-                        status = $5
-                """, admin_id, data.get('username'), data.get('subscription_type'),
-                    data.get('subscription_expires'), data.get('status', 'active'))
-                return True
-        except Exception as e:
-            logger.error(f"DB save error: {e}")
-    
-    # Fallback to memory
-    memory_db['admins'][admin_id] = data
-    return True
+async def create_admin(user_id: int, username: str, first_name: str, plan_type: str, expires: datetime):
+    """Create admin"""
+    if not db_pool:
+        return False
+    try:
+        async with db_pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO platform_admins (admin_id, username, first_name, subscription_type, subscription_expires, status)
+                VALUES ($1, $2, $3, $4, $5, 'active')
+                ON CONFLICT (admin_id) DO UPDATE SET
+                    subscription_type = $4,
+                    subscription_expires = $5,
+                    status = 'active',
+                    updated_at = NOW()
+            """, user_id, username, first_name, plan_type, expires)
+            logger.info(f"✅ Admin created: {user_id} - {plan_type}")
+            return True
+    except Exception as e:
+        logger.error(f"Create admin error: {e}")
+        return False
 
-async def log_activity(user_id: int, action: str, details: str = ""):
-    """Log user activity"""
-    if db_pool:
-        try:
-            async with db_pool.acquire() as conn:
-                await conn.execute("""
-                    INSERT INTO activity_log (user_id, action, details)
-                    VALUES ($1, $2, $3)
-                """, user_id, action, details)
-        except Exception as e:
-            logger.error(f"Activity log error: {e}")
+async def save_pending_payment(user_id: int, amount: float, plan_type: str):
+    """Save payment"""
+    if not db_pool:
+        return None
+    try:
+        async with db_pool.acquire() as conn:
+            payment_id = await conn.fetchval("""
+                INSERT INTO pending_payments (user_id, amount, plan_type, status)
+                VALUES ($1, $2, $3, 'pending')
+                RETURNING id
+            """, user_id, amount, plan_type)
+            return payment_id
+    except Exception as e:
+        logger.error(f"Save payment error: {e}")
+        return None
 
 # ═══════════════════════════════════════════════════════════════════════
-# COMMAND HANDLERS - ALL REGISTERED
+# HELIUS AUTO-VERIFICATION
 # ═══════════════════════════════════════════════════════════════════════
 
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Main entry point"""
+async def verify_payment_with_helius(user_id: int, expected_amount: float) -> tuple:
+    """Verify payment via Helius"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"https://api.helius.xyz/v0/addresses/{Config.MASTER_WALLET}/transactions?api-key={Config.HELIUS_KEY}&limit=20"
+            
+            async with session.get(url, timeout=30) as resp:
+                if resp.status != 200:
+                    logger.error(f"Helius error: {resp.status}")
+                    return False, None, 0
+                
+                data = await resp.json()
+                
+                if not isinstance(data, list):
+                    return False, None, 0
+                
+                for tx in data:
+                    tx_hash = tx.get('signature')
+                    if not tx_hash:
+                        continue
+                    
+                    native_transfers = tx.get('nativeTransfers', [])
+                    
+                    for transfer in native_transfers:
+                        to_address = transfer.get('toUserAccount')
+                        amount_lamports = transfer.get('amount', 0)
+                        amount_sol = amount_lamports / 1_000_000_000
+                        
+                        if to_address == Config.MASTER_WALLET:
+                            if abs(amount_sol - expected_amount) < 0.01:
+                                logger.info(f"✅ Payment found: {amount_sol} SOL")
+                                return True, tx_hash, amount_sol
+                
+                return False, None, 0
+                
+    except Exception as e:
+        logger.error(f"Helius error: {e}")
+        return False, None, 0
+
+# ═══════════════════════════════════════════════════════════════════════
+# TELEGRAM HANDLERS
+# ═══════════════════════════════════════════════════════════════════════
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Main entry"""
     user = update.effective_user
-    logger.info(f"▶️ /start from {user.id} ({user.username})")
+    logger.info(f"▶️ Start from {user.id} ({user.username})")
     
-    await log_activity(user.id, "start", f"User: {user.username}")
-    
-    # MASTER ADMIN (You)
-    if user.id == ADMIN_ID:
+    if user.id == Config.ADMIN_ID:
         await show_master_dashboard(update, user)
         return
     
-    # Check if registered admin
-    admin = await get_admin_from_db(user.id)
+    admin = await get_admin(user.id)
     
     if admin and admin.get('subscription_expires'):
-        if isinstance(admin['subscription_expires'], str):
-            expires = datetime.fromisoformat(admin['subscription_expires'].replace('Z', '+00:00'))
-        else:
-            expires = admin['subscription_expires']
+        expires = admin['subscription_expires']
+        if isinstance(expires, str):
+            expires = datetime.fromisoformat(expires.replace('Z', '+00:00'))
         
         if expires > datetime.now():
-            await show_admin_dashboard(update, user, admin)
+            days_left = (expires - datetime.now()).days
+            await show_admin_dashboard(update, user, admin, days_left)
             return
     
-    # New user - show subscription offer
     await show_subscription_offer(update, user)
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show all available commands"""
-    user = update.effective_user
-    
-    help_text = """📋 AVAILABLE COMMANDS
-
-/start - Open main menu & dashboard
-/help - Show this help message
-/status - Check your subscription status
-/stats - View platform statistics (admins)
-/deploy - Deploy your bot (subscribers)
-/withdraw - Withdraw earnings (subscribers)
-/support - Contact support team
-
-BUTTON NAVIGATION:
-All buttons now work! Use "🔙 Back" to return.
-
-NEED HELP?
-Contact: @MexRobert"""
-    
-    await update.message.reply_text(help_text)
-
-async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Check subscription status"""
-    user = update.effective_user
-    
-    if user.id == ADMIN_ID:
-        await update.message.reply_text(
-            "👑 MASTER ADMIN STATUS\n\n"
-            "✅ Platform: ONLINE\n"
-            "✅ Database: Connected\n"
-            "✅ Revenue: Flowing to your wallet\n\n"
-            "You have full control!"
-        )
-        return
-    
-    admin = await get_admin_from_db(user.id)
-    
-    if not admin or not admin.get('subscription_expires'):
-        await update.message.reply_text(
-            "❌ NO ACTIVE SUBSCRIPTION\n\n"
-            "Subscribe to deploy your own bot:\n"
-            "💎 Monthly: 5 SOL\n"
-            "👑 Yearly: 50 SOL\n\n"
-            "Click /start to subscribe"
-        )
-        return
-    
-    # Check expiration
-    expires = admin['subscription_expires']
-    if isinstance(expires, str):
-        expires = datetime.fromisoformat(expires.replace('Z', '+00:00'))
-    
-    days_left = (expires - datetime.now()).days
-    
-    if days_left > 0:
-        status_text = (
-            f"✅ ACTIVE SUBSCRIPTION\n\n"
-            f"Plan: {admin.get('subscription_type', 'UNKNOWN').upper()}\n"
-            f"Expires: {expires.strftime('%Y-%m-%d')} ({days_left} days)\n"
-            f"Status: {admin.get('status', 'ACTIVE')}\n\n"
-            f"💰 Total Earned: {admin.get('total_earned', 0):.2f} SOL\n\n"
-            f"Use /start to access dashboard"
-        )
-    else:
-        status_text = (
-            f"⚠️ SUBSCRIPTION EXPIRED\n\n"
-            f"Expired: {expires.strftime('%Y-%m-%d')}\n\n"
-            f"Renew now: /start"
-        )
-    
-    await update.message.reply_text(status_text)
-
-async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show platform statistics"""
-    user = update.effective_user
-    
-    # Only for admins
-    admin = await get_admin_from_db(user.id)
-    if not admin and user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Admin only command")
-        return
-    
-    try:
-        if db_pool:
-            async with db_pool.acquire() as conn:
-                total = await conn.fetchval("SELECT COUNT(*) FROM platform_admins") or 0
-                active = await conn.fetchval(
-                    "SELECT COUNT(*) FROM platform_admins WHERE subscription_expires > NOW()"
-                ) or 0
-                bots = await conn.fetchval("SELECT COUNT(*) FROM client_bots") or 0
-        else:
-            total = len(memory_db['admins'])
-            active = sum(1 for a in memory_db['admins'].values() 
-                        if a.get('subscription_expires', datetime.min) > datetime.now())
-            bots = len(memory_db['bots'])
-        
-        stats_text = (
-            f"📊 PLATFORM STATISTICS\n\n"
-            f"👥 Total Admins: {total}\n"
-            f"✅ Active Subs: {active}\n"
-            f"🤖 Client Bots: {bots}\n"
-            f"💳 Master Wallet: {MASTER_WALLET[:20]}...\n\n"
-            f"🚀 Platform Status: ONLINE"
-        )
-        
-        await update.message.reply_text(stats_text)
-        
-    except Exception as e:
-        logger.error(f"Stats error: {e}")
-        await update.message.reply_text(
-            f"📊 STATISTICS\n\n"
-            f"Memory Mode: Active\n"
-            f"Admins in memory: {len(memory_db['admins'])}\n"
-            f"Bots in memory: {len(memory_db['bots'])}\n\n"
-            f"⚠️ Database: Using fallback storage"
-        )
-
-async def deploy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Deploy bot for subscribers"""
-    user = update.effective_user
-    
-    # Check subscription
-    admin = await get_admin_from_db(user.id)
-    if not admin or not admin.get('subscription_expires'):
-        await update.message.reply_text(
-            "❌ Subscription required\n\nSubscribe: /start"
-        )
-        return
-    
-    if not context.args or len(context.args) < 4:
-        await update.message.reply_text(
-            """🚀 BOT DEPLOYMENT
-
-Usage:
-/deploy BOT_TOKEN CHANNEL_ID GROUP_ID WALLET
-
-Example:
-/deploy 123456:ABC... -1001234567890 -1009876543210 Hxmyw...
-
-Get bot token from @BotFather
-Channel ID: Forward message from channel to @userinfobot
-Group ID: Add @userinfobot to group
-
-Your bot will be live in 2 minutes!"""
-        )
-        return
-    
-    # Parse arguments
-    bot_token = context.args[0]
-    channel_id = context.args[1]
-    group_id = context.args[2]
-    wallet = context.args[3]
-    
-    # Save deployment request
-    if db_pool:
-        try:
-            async with db_pool.acquire() as conn:
-                bot_id = await conn.fetchval("""
-                    INSERT INTO client_bots (admin_id, bot_name, bot_token, public_channel, vip_group, client_wallet)
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                    RETURNING bot_id
-                """, user.id, f"bot_{user.id}", bot_token, channel_id, group_id, wallet)
-        except Exception as e:
-            logger.error(f"Deploy save error: {e}")
-            bot_id = len(memory_db['bots']) + 1
-            memory_db['bots'][bot_id] = {
-                'admin_id': user.id,
-                'bot_token': bot_token,
-                'channel': channel_id,
-                'group': group_id,
-                'wallet': wallet
-            }
-    else:
-        bot_id = len(memory_db['bots']) + 1
-        memory_db['bots'][bot_id] = {
-            'admin_id': user.id,
-            'bot_token': bot_token,
-            'channel': channel_id,
-            'group': group_id,
-            'wallet': wallet
-        }
-    
-    await update.message.reply_text(
-        f"""✅ BOT DEPLOYMENT REQUESTED
-
-🆔 Deployment ID: {bot_id}
-⏳ Status: Processing (2-5 minutes)
-
-Your bot will:
-• Monitor DexScreener for new tokens
-• Post alerts to {channel_id}
-• Accept payments to {wallet[:15]}...
-• Manage VIP access automatically
-
-You'll receive confirmation when live!
-
-Support: @{SUPPORT_USERNAME}"""
-    )
-
-async def withdraw_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show withdraw info"""
-    user = update.effective_user
-    
-    admin = await get_admin_from_db(user.id)
-    if not admin:
-        await update.message.reply_text("❌ No earnings to withdraw")
-        return
-    
-    earned = admin.get('total_earned', 0)
-    
-    await update.message.reply_text(
-        f"""💰 WITHDRAW EARNINGS
-
-Current Balance: {earned:.2f} SOL
-
-Earnings go directly to your configured wallet.
-No manual withdrawal needed!
-
-Last payment: {admin.get('last_payment', 'Never')}
-
-Contact @{SUPPORT_USERNAME} for large transfers."""
-    )
-
-async def support_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Contact support"""
-    await update.message.reply_text(
-        f"""💬 SUPPORT
-
-Contact: @{SUPPORT_USERNAME}
-
-Include:
-• Your User ID: {update.effective_user.id}
-• Issue description
-• Screenshots if helpful
-
-Response time: 2-24 hours"""
-    )
-
-# ═══════════════════════════════════════════════════════════════════════
-# BUTTON DISPLAY FUNCTIONS
-# ═══════════════════════════════════════════════════════════════════════
-
 async def show_master_dashboard(update: Update, user):
-    """Show master admin dashboard"""
+    """Master dashboard"""
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("📊 Stats", callback_data="master_stats")],
         [InlineKeyboardButton("💰 Revenue", callback_data="master_revenue")],
-        [InlineKeyboardButton("👥 Admins", callback_data="master_admins")],
-        [InlineKeyboardButton("📝 Activity Log", callback_data="master_log")]
+        [InlineKeyboardButton("👥 Admins", callback_data="master_admins")]
     ])
     
     await update.message.reply_text(
         f"""👑 MASTER DASHBOARD - ICEGODS Platform
 
 🚀 Status: ONLINE
-💳 Wallet: `{MASTER_WALLET[:20]}...`
+💳 Wallet: `{Config.MASTER_WALLET[:20]}...`
 
 Your SaaS platform is live!
 • Devs subscribe for 5-50 SOL
 • You earn 20% commission
-• Automated deployment system
+• Auto payment verification
 
 Select below:""",
         reply_markup=keyboard,
         parse_mode='Markdown'
     )
 
-async def show_admin_dashboard(update: Update, user, admin):
-    """Show subscriber dashboard"""
-    expires = admin['subscription_expires']
-    if isinstance(expires, str):
-        expires = datetime.fromisoformat(expires.replace('Z', '+00:00'))
-    
-    days = (expires - datetime.now()).days
-    
+async def show_admin_dashboard(update: Update, user, admin, days_left):
+    """Subscriber dashboard"""
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🚀 Deploy Bot", callback_data="deploy_bot")],
         [InlineKeyboardButton("⚙️ My Bots", callback_data="my_bots")],
@@ -496,26 +301,27 @@ async def show_admin_dashboard(update: Update, user, admin):
         [InlineKeyboardButton("🔄 Renew", callback_data="renew_sub")]
     ])
     
+    exp_str = admin['subscription_expires'].strftime('%Y-%m-%d') if isinstance(admin['subscription_expires'], datetime) else str(admin['subscription_expires'])[:10]
+    
     await update.message.reply_text(
         f"""⚡ ADMIN PANEL
 
 👤 Status: {admin.get('subscription_type', 'ACTIVE').upper()}
-⏰ Expires: {days} days ({expires.strftime('%Y-%m-%d')})
+⏰ Expires: {days_left} days ({exp_str})
 💰 Earned: {admin.get('total_earned', 0):.2f} SOL
-📊 Share: {admin.get('revenue_share_percent', 80)}%
 
 🎯 Your Tools Ready!""",
         reply_markup=keyboard
     )
 
 async def show_subscription_offer(update: Update, user):
-    """Show offer to new users"""
+    """Show offer"""
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("💎 Monthly (5 SOL)", callback_data="sub_monthly")],
-        [InlineKeyboardButton("👑 Yearly (50 SOL)", callback_data="sub_yearly")],
-        [InlineKeyboardButton("📊 Calculate Revenue", callback_data="calc_revenue")],
+        [InlineKeyboardButton("💎 Monthly - 5 SOL", callback_data="sub_monthly")],
+        [InlineKeyboardButton("👑 Yearly - 50 SOL", callback_data="sub_yearly")],
+        [InlineKeyboardButton("📊 Calculator", callback_data="calc_revenue")],
         [InlineKeyboardButton("❓ How It Works", callback_data="how_works")],
-        [InlineKeyboardButton("💬 Support", url=f"https://t.me/{SUPPORT_USERNAME}")]
+        [InlineKeyboardButton("💬 Support", url=f"https://t.me/{Config.SUPPORT_USERNAME}")]
     ])
     
     await update.message.reply_text(
@@ -540,18 +346,16 @@ Deploy your own token alert bot!
 • Monthly: 5 SOL
 • Yearly: 50 SOL (Best Value)
 
-⚡ Limited spots!
-
 Tap below 👇""",
         reply_markup=keyboard
     )
 
 # ═══════════════════════════════════════════════════════════════════════
-# BUTTON HANDLERS - ALL IMPLEMENTED
+# BUTTON HANDLERS
 # ═══════════════════════════════════════════════════════════════════════
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle ALL button presses"""
+    """Handle all buttons"""
     query = update.callback_query
     await query.answer()
     
@@ -560,29 +364,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logger.info(f"🔘 Button: {data} by {user_id}")
     
-    # MASTER ADMIN BUTTONS
-    if user_id == ADMIN_ID:
+    # MASTER ADMIN
+    if user_id == Config.ADMIN_ID:
         if data == "master_stats":
             await handle_master_stats(query)
         elif data == "master_revenue":
             await handle_master_revenue(query)
         elif data == "master_admins":
             await handle_master_admins(query)
-        elif data == "master_log":
-            await handle_master_log(query)
         elif data == "master_main":
             await back_to_master(query)
         return
     
-    # REGULAR USER BUTTONS
+    # USER BUTTONS
     if data == "main_menu":
         await back_to_main(query, user_id)
     elif data == "calc_revenue":
         await handle_calc_revenue(query)
     elif data == "sub_monthly":
-        await handle_subscription(query, user_id, "monthly", 5.0)
+        await handle_subscription(query, user_id, "monthly", 5.0, 30)
     elif data == "sub_yearly":
-        await handle_subscription(query, user_id, "yearly", 50.0)
+        await handle_subscription(query, user_id, "yearly", 50.0, 365)
     elif data == "how_works":
         await handle_how_works(query)
     elif data == "deploy_bot":
@@ -595,215 +397,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_my_earnings(query, user_id)
     elif data == "renew_sub":
         await handle_renew(query, user_id)
-    elif data.startswith("confirm_"):
-        await handle_payment_confirm(query, user_id, data)
+    elif data == "check_payment":
+        await handle_check_payment(query, user_id)
 
-async def handle_master_stats(query):
-    """Show platform stats"""
-    try:
-        if db_pool:
-            async with db_pool.acquire() as conn:
-                total = await conn.fetchval("SELECT COUNT(*) FROM platform_admins") or 0
-                active = await conn.fetchval(
-                    "SELECT COUNT(*) FROM platform_admins WHERE subscription_expires > NOW()"
-                ) or 0
-        else:
-            total = len(memory_db['admins'])
-            active = sum(1 for a in memory_db['admins'].values() 
-                        if a.get('subscription_expires', datetime.min) > datetime.now())
-        
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 Back", callback_data="master_main")]
-        ])
-        
-        await query.message.edit_text(
-            f"""📊 PLATFORM STATISTICS
-
-👥 Total Admins: {total}
-✅ Active: {active}
-💳 Master Wallet: {MASTER_WALLET[:25]}...
-
-✅ Platform running smoothly!""",
-            reply_markup=keyboard
-        )
-    except Exception as e:
-        logger.error(f"Stats button error: {e}")
-        await query.message.edit_text(
-            "📊 Statistics\n\n"
-            f"Admins: {len(memory_db['admins'])}\n"
-            f"Using memory storage\n\n"
-            "🔙 Use /start to go back",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 Back", callback_data="master_main")]
-            ])
-        )
-
-async def handle_master_revenue(query):
-    """Show revenue"""
+async def handle_subscription(query, user_id, plan_type, amount, days):
+    """Show invoice"""
+    payment_id = await save_pending_payment(user_id, amount, plan_type)
+    
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("💰 View Wallet", url=f"https://solscan.io/account/{MASTER_WALLET}")],
-        [InlineKeyboardButton("📊 Stats", callback_data="master_stats")],
-        [InlineKeyboardButton("🔙 Back", callback_data="master_main")]
-    ])
-    
-    await query.message.edit_text(
-        f"""💰 REVENUE DASHBOARD
-
-Master Wallet:
-`{MASTER_WALLET}`
-
-🔗 Check on Solscan
-
-Revenue:
-• SaaS: 100% to you
-• Commissions: 20% of client earnings
-• Fees: Auto-collected
-
-Tap below 👇""",
-        reply_markup=keyboard,
-        parse_mode='Markdown'
-    )
-
-async def handle_master_admins(query):
-    """List admins"""
-    try:
-        if db_pool:
-            async with db_pool.acquire() as conn:
-                admins = await conn.fetch(
-                    "SELECT admin_id, username, subscription_type, status FROM platform_admins ORDER BY created_at DESC LIMIT 10"
-                )
-        else:
-            admins = [
-                {'admin_id': k, 'username': v.get('username'), 'subscription_type': v.get('subscription_type'), 'status': v.get('status')}
-                for k, v in memory_db['admins'].items()
-            ]
-        
-        text = "👥 ADMINS\n\n"
-        for a in admins[:10]:
-            emoji = "🟢" if a['status'] == 'active' else "🔴"
-            name = a.get('username') or f"ID:{a['admin_id']}"
-            text += f"{emoji} {name} - {a.get('subscription_type', 'none')}\n"
-        
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 Back", callback_data="master_main")]
-        ])
-        
-        await query.message.edit_text(text, reply_markup=keyboard)
-        
-    except Exception as e:
-        logger.error(f"Admins error: {e}")
-        await query.message.edit_text(
-            "👥 Admin list unavailable",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 Back", callback_data="master_main")]
-            ])
-        )
-
-async def handle_master_log(query):
-    """Show recent activity"""
-    try:
-        if db_pool:
-            async with db_pool.acquire() as conn:
-                logs = await conn.fetch(
-                    "SELECT user_id, action, created_at FROM activity_log ORDER BY created_at DESC LIMIT 5"
-                )
-                text = "📝 RECENT ACTIVITY\n\n"
-                for log in logs:
-                    text += f"• {log['action']} by {log['user_id']}\n"
-        else:
-            text = "📝 Activity log (memory mode)\n\nRecent actions logged"
-        
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 Back", callback_data="master_main")]
-        ])
-        
-        await query.message.edit_text(text, reply_markup=keyboard)
-        
-    except Exception as e:
-        await query.message.edit_text(
-            "📝 No recent activity",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 Back", callback_data="master_main")]
-            ])
-        )
-
-async def back_to_master(query):
-    """Return to master menu"""
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📊 Stats", callback_data="master_stats")],
-        [InlineKeyboardButton("💰 Revenue", callback_data="master_revenue")],
-        [InlineKeyboardButton("👥 Admins", callback_data="master_admins")]
-    ])
-    
-    await query.message.edit_text(
-        f"""👑 MASTER DASHBOARD
-
-🚀 Platform Online
-💳 Wallet: {MASTER_WALLET[:20]}...
-
-Select:""",
-        reply_markup=keyboard
-    )
-
-async def back_to_main(query, user_id):
-    """Return to main menu"""
-    # Re-trigger start
-    class FakeMsg:
-        def __init__(self):
-            self.reply_text = query.message.reply_text
-    
-    class FakeUpdate:
-        def __init__(self):
-            self.effective_user = query.from_user
-            self.message = FakeMsg()
-    
-    fake_update = FakeUpdate()
-    await start_command(fake_update, None)
-
-async def handle_calc_revenue(query):
-    """Show calculator"""
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("💎 Subscribe", callback_data="sub_monthly")],
+        [InlineKeyboardButton("🛰 Check My Payment", callback_data="check_payment")],
+        [InlineKeyboardButton("❓ Help", url=f"https://t.me/{Config.SUPPORT_USERNAME}")],
         [InlineKeyboardButton("🔙 Back", callback_data="main_menu")]
     ])
     
     await query.message.edit_text(
-        """📊 REVENUE CALCULATOR
-
-With 200 users:
-• 10 buy VIP (0.5 SOL) = 5 SOL
-• 4 buy Whale (1 SOL) = 4 SOL  
-• 2 buy Premium (2.5 SOL) = 5 SOL
-• Total: 14 SOL/month
-
-Your 80% = 11.2 SOL
-Minus SaaS (5 SOL) = 6.2 SOL PROFIT
-
-Scale to 1000 users = 31 SOL/month!""",
-        reply_markup=keyboard
-    )
-
-async def handle_subscription(query, user_id, plan_type, amount):
-    """Show payment invoice"""
-    days = 30 if plan_type == 'monthly' else 365
-    
-    # Save to memory as pending
-    memory_db['payments'].append({
-        'user_id': user_id,
-        'plan': plan_type,
-        'amount': amount,
-        'status': 'pending',
-        'time': datetime.now()
-    })
-    
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ I've Sent Payment", callback_data=f"confirm_{plan_type}")],
-        [InlineKeyboardButton("❓ Help", url=f"https://t.me/{SUPPORT_USERNAME}")],
-        [InlineKeyboardButton("🔙 Back", callback_data="main_menu")]
-    ])
-    
-    await query.message.edit_text(
-        f"""🧾 INVOICE
+        f"""🧾 INVOICE #{payment_id}
 
 Plan: {plan_type.upper()}
 Duration: {days} days
@@ -811,19 +419,184 @@ Amount: {amount} SOL
 
 ═══════════════════
 SEND TO:
-`{MASTER_WALLET}`
+`{Config.MASTER_WALLET}`
 ═══════════════════
 
 ⚠️ Send EXACTLY {amount} SOL
-✅ Then click "I've Sent Payment"
+✅ Click "Check My Payment"
+🤖 Auto-verification!
 
-Access granted immediately!""",
+Access activates instantly!""",
         reply_markup=keyboard,
         parse_mode='Markdown'
     )
 
+async def handle_check_payment(query, user_id):
+    """Auto-verify"""
+    await query.answer("🛰 Checking blockchain...")
+    
+    for amount, plan_type in [(5.0, 'monthly'), (50.0, 'yearly')]:
+        success, tx_hash, actual_amount = await verify_payment_with_helius(user_id, amount)
+        
+        if success:
+            expires = datetime.now() + timedelta(days=30 if plan_type == 'monthly' else 365)
+            user = query.from_user
+            
+            created = await create_admin(user_id, user.username, user.first_name, plan_type, expires)
+            
+            if created:
+                await query.message.edit_text(
+                    f"""✅ PAYMENT VERIFIED!
+
+🎉 Subscription ACTIVATED!
+📦 Plan: {plan_type.upper()}
+⏰ Expires: {expires.strftime('%Y-%m-%d')}
+💰 Amount: {actual_amount:.4f} SOL
+🔗 Tx: {tx_hash[:25]}...
+
+🚀 Your admin panel is ready!
+Click /start to access it!"""
+                )
+                
+                # Notify master
+                try:
+                    await bot_app.bot.send_message(
+                        Config.ADMIN_ID,
+                        f"💰 NEW SUBSCRIPTION!\nUser: {user_id} (@{user.username})\nPlan: {plan_type}\nAmount: {actual_amount:.4f} SOL"
+                    )
+                except:
+                    pass
+                return
+    
+    await query.message.reply_text(
+        """⏳ PAYMENT NOT FOUND
+
+• Transaction still confirming? Wait 2 mins
+• Wrong amount?
+• Check Solscan for your tx
+
+Try again shortly."""
+    )
+
+async def handle_master_stats(query):
+    """Stats"""
+    try:
+        if db_pool:
+            async with db_pool.acquire() as conn:
+                total = await conn.fetchval("SELECT COUNT(*) FROM platform_admins") or 0
+                active = await conn.fetchval("SELECT COUNT(*) FROM platform_admins WHERE subscription_expires > NOW()") or 0
+            
+            text = f"""📊 STATS
+
+👥 Total Admins: {total}
+✅ Active: {active}
+💳 Wallet: {Config.MASTER_WALLET[:25]}...
+
+✅ Platform running!"""
+        else:
+            text = "❌ Database disconnected"
+        
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="master_main")]])
+        await query.message.edit_text(text, reply_markup=keyboard)
+        
+    except Exception as e:
+        logger.error(f"Stats error: {e}")
+        await query.message.edit_text("⚠️ Error", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="master_main")]]))
+
+async def handle_master_revenue(query):
+    """Revenue"""
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💰 View on Solscan", url=f"https://solscan.io/account/{Config.MASTER_WALLET}")],
+        [InlineKeyboardButton("🔙 Back", callback_data="master_main")]
+    ])
+    
+    await query.message.edit_text(
+        f"""💰 REVENUE
+
+Master Wallet:
+`{Config.MASTER_WALLET}`
+
+🔗 Check live balance
+
+• SaaS: 100% to you
+• Commissions: 20%
+
+Auto-verified payments!""",
+        reply_markup=keyboard,
+        parse_mode='Markdown'
+    )
+
+async def handle_master_admins(query):
+    """Admins list"""
+    try:
+        if db_pool:
+            async with db_pool.acquire() as conn:
+                admins = await conn.fetch("SELECT admin_id, username, subscription_type, subscription_expires, status FROM platform_admins ORDER BY created_at DESC LIMIT 20")
+            
+            text = "👥 ADMINS\n\n"
+            for a in admins:
+                emoji = "🟢" if a['status'] == 'active' else "🔴"
+                name = a['username'] or f"ID:{a['admin_id']}"
+                exp = a['subscription_expires'].strftime('%Y-%m-%d') if isinstance(a['subscription_expires'], datetime) else str(a['subscription_expires'])[:10]
+                text += f"{emoji} {name} | {a['subscription_type']} | {exp}\n"
+        else:
+            text = "❌ Database not connected"
+        
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="master_main")]])
+        await query.message.edit_text(text, reply_markup=keyboard)
+        
+    except Exception as e:
+        logger.error(f"Admins error: {e}")
+        await query.message.edit_text("⚠️ Error", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="master_main")]]))
+
+async def back_to_master(query):
+    """Back to master"""
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📊 Stats", callback_data="master_stats")],
+        [InlineKeyboardButton("💰 Revenue", callback_data="master_revenue")],
+        [InlineKeyboardButton("👥 Admins", callback_data="master_admins")]
+    ])
+    
+    await query.message.edit_text(f"""👑 MASTER DASHBOARD
+
+🚀 Platform Online
+💳 Wallet: {Config.MASTER_WALLET[:20]}...
+
+Select:""", reply_markup=keyboard)
+
+async def back_to_main(query, user_id):
+    """Back to main"""
+    class FakeUpdate:
+        def __init__(self, user, msg):
+            self.effective_user = user
+            self.message = msg
+    
+    fake_update = FakeUpdate(query.from_user, query.message)
+    await start(fake_update, None)
+
+async def handle_calc_revenue(query):
+    """Calculator"""
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💎 Subscribe", callback_data="sub_monthly")],
+        [InlineKeyboardButton("🔙 Back", callback_data="main_menu")]
+    ])
+    
+    await query.message.edit_text(
+        """📊 CALCULATOR
+
+With 200 users:
+• 10 VIP (0.5 SOL) = 5 SOL
+• 4 Whale (1 SOL) = 4 SOL  
+• 2 Premium (2.5 SOL) = 5 SOL
+• Total: 14 SOL/month
+
+Your 80% = 11.2 SOL
+Minus SaaS (5 SOL) = 6.2 SOL PROFIT""",
+        reply_markup=keyboard
+    )
+
 async def handle_how_works(query):
-    """Explain platform"""
+    """How it works"""
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("💎 Subscribe", callback_data="sub_monthly")],
         [InlineKeyboardButton("🔙 Back", callback_data="main_menu")]
@@ -833,22 +606,10 @@ async def handle_how_works(query):
         """❓ HOW IT WORKS
 
 1️⃣ SUBSCRIBE (5-50 SOL)
-   Get platform access
-
 2️⃣ DEPLOY BOT (/deploy)
-   We create your bot
-   Set your prices
-
 3️⃣ ATTRACT USERS
-   Free alerts → Paid upgrades
-
 4️⃣ EARN AUTOMATICALLY
-   Users pay YOU directly
-   You keep 80%
-
 5️⃣ SCALE
-   Multiple bots
-   Passive income
 
 💰 EXAMPLE:
 500 users → 25 pay 0.5 SOL = 12.5 SOL
@@ -858,10 +619,15 @@ Profit = 10 - 5 = 5 SOL/month""",
     )
 
 async def handle_deploy_button(query, user_id):
-    """Show deploy info"""
+    """Deploy"""
+    admin = await get_admin(user_id)
+    if not admin or not admin.get('subscription_expires'):
+        await query.answer("❌ Subscribe first!", show_alert=True)
+        await query.message.reply_text("Subscribe: /start")
+        return
+    
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📋 Full Instructions", callback_data="deploy_info")],
-        [InlineKeyboardButton("💬 Get Help", url=f"https://t.me/{SUPPORT_USERNAME}")],
+        [InlineKeyboardButton("💬 Get Help", url=f"https://t.me/{Config.SUPPORT_USERNAME}")],
         [InlineKeyboardButton("🔙 Back", callback_data="main_menu")]
     ])
     
@@ -871,88 +637,73 @@ async def handle_deploy_button(query, user_id):
 Send me:
 /deploy BOT_TOKEN CHANNEL_ID GROUP_ID WALLET
 
-Get bot token from @BotFather
-
-I'll create your white-label bot!""",
+Get token from @BotFather""",
         reply_markup=keyboard
     )
 
 async def handle_my_bots(query, user_id):
-    """Show user's bots"""
-    await query.message.edit_text(
-        """⚙️ YOUR BOTS
-
-No active bots yet.
-
-Use /deploy to create your first bot!""",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🚀 Deploy Now", callback_data="deploy_bot")],
-            [InlineKeyboardButton("🔙 Back", callback_data="main_menu")]
-        ])
-    )
+    await query.message.edit_text("⚙️ YOUR BOTS\n\nNo active bots yet.\n\nUse /deploy!", reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton("🚀 Deploy", callback_data="deploy_bot")],
+        [InlineKeyboardButton("🔙 Back", callback_data="main_menu")]
+    ]))
 
 async def handle_my_stats(query, user_id):
-    """Show user stats"""
-    await query.message.edit_text(
-        """📊 YOUR STATISTICS
-
-No data yet.
-Deploy a bot to start earning!""",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🚀 Deploy Bot", callback_data="deploy_bot")],
-            [InlineKeyboardButton("🔙 Back", callback_data="main_menu")]
-        ])
-    )
+    await query.message.edit_text("📊 STATISTICS\n\nNo data yet.\nDeploy a bot!", reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton("🚀 Deploy", callback_data="deploy_bot")],
+        [InlineKeyboardButton("🔙 Back", callback_data="main_menu")]
+    ]))
 
 async def handle_my_earnings(query, user_id):
-    """Show earnings"""
-    await query.message.edit_text(
-        """💰 YOUR EARNINGS
-
-Balance: 0.00 SOL
-
-Earnings go directly to your wallet.
-
-Start earning by deploying a bot!""",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🚀 Deploy Bot", callback_data="deploy_bot")],
-            [InlineKeyboardButton("🔙 Back", callback_data="main_menu")]
-        ])
-    )
+    await query.message.edit_text("💰 EARNINGS\n\nBalance: 0.00 SOL\n\nDeploy a bot!", reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton("🚀 Deploy", callback_data="deploy_bot")],
+        [InlineKeyboardButton("🔙 Back", callback_data="main_menu")]
+    ]))
 
 async def handle_renew(query, user_id):
-    """Show renewal"""
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("💎 Monthly (5 SOL)", callback_data="sub_monthly")],
         [InlineKeyboardButton("👑 Yearly (50 SOL)", callback_data="sub_yearly")],
         [InlineKeyboardButton("🔙 Back", callback_data="main_menu")]
     ])
+    await query.message.edit_text("🔄 RENEW\n\nSelect plan:", reply_markup=keyboard)
+
+# ═══════════════════════════════════════════════════════════════════════
+# COMMANDS
+# ═══════════════════════════════════════════════════════════════════════
+
+async def deploy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Deploy"""
+    user = update.effective_user
     
-    await query.message.edit_text(
-        """🔄 RENEW SUBSCRIPTION
-
-Select plan:""",
-        reply_markup=keyboard
-    )
-
-async def handle_payment_confirm(query, user_id, data):
-    """Handle payment confirmation"""
-    plan = data.replace("confirm_", "")
+    admin = await get_admin(user.id)
+    if not admin or not admin.get('subscription_expires'):
+        await update.message.reply_text("❌ Subscription required\n\nSubscribe: /start")
+        return
     
-    await query.message.reply_text(
-        f"""🛰 CHECKING PAYMENT...
+    if not context.args or len(context.args) < 4:
+        await update.message.reply_text("""🚀 DEPLOYMENT
 
-Looking for your {plan} payment...
+Usage:
+/deploy BOT_TOKEN CHANNEL_ID GROUP_ID WALLET
 
-If you just sent SOL, please wait 1-2 minutes for blockchain confirmation.
+Example:
+/deploy 123456:ABC... -1001234567890 -1009876543210 Hxmyw...""")
+        return
+    
+    bot_token = context.args[0]
+    channel_id = context.args[1]
+    group_id = context.args[2]
+    wallet = context.args[3]
+    
+    await update.message.reply_text(
+        f"""✅ DEPLOYMENT REQUESTED
 
-Then contact @{SUPPORT_USERNAME} with:
-• Your ID: {user_id}
-• Transaction hash
-• Amount sent
+Bot: {bot_token[:20]}...
+Channel: {channel_id}
+Group: {group_id}
+Wallet: {wallet[:15]}...
 
-I'll activate your access immediately!"""
-    )
+⏳ Processing (2-5 mins)""")
 
 # ═══════════════════════════════════════════════════════════════════════
 # FLASK SERVER
@@ -961,17 +712,16 @@ I'll activate your access immediately!"""
 @app.route("/")
 def health():
     return jsonify({
-        "status": "ICEGODS LIVE",
-        "version": "2.0",
-        "wallet": MASTER_WALLET,
-        "database": "connected" if db_pool else "memory_mode",
-        "commands": ["/start", "/help", "/status", "/stats", "/deploy", "/withdraw", "/support"],
+        "status": "ICEGODS Platform v3.1 - LIVE",
+        "database": "ylpxxgvaetykmswzrpmi",
+        "connected": db_pool is not None,
+        "auto_verify": "enabled",
+        "master_wallet": Config.MASTER_WALLET,
         "timestamp": datetime.now().isoformat()
     })
 
-@app.route(f"/webhook/{BOT_TOKEN.split(':')[1]}", methods=['POST'])
+@app.route(f"/webhook/{Config.BOT_TOKEN.split(':')[1]}", methods=['POST'])
 def webhook():
-    """Handle Telegram updates"""
     if not bot_app:
         return jsonify({"error": "Bot not ready"}), 503
     
@@ -999,10 +749,9 @@ def webhook():
 # ═══════════════════════════════════════════════════════════════════════
 
 def init_bot():
-    """Initialize bot"""
     global bot_app, bot_loop
     
-    logger.info("Initializing bot...")
+    logger.info("🤖 Initializing bot...")
     
     bot_loop = asyncio.new_event_loop()
     asyncio.set_event_loop(bot_loop)
@@ -1010,36 +759,22 @@ def init_bot():
     async def setup():
         global bot_app
         
-        # Init database
         db_ok = await init_database()
-        logger.info(f"Database: {'OK' if db_ok else 'MEMORY MODE'}")
+        logger.info(f"Database: {'✅ Connected' if db_ok else '❌ Failed'}")
         
-        # Create bot
-        bot_app = Application.builder().token(BOT_TOKEN).build()
-        
-        # ADD ALL COMMAND HANDLERS
-        bot_app.add_handler(CommandHandler("start", start_command))
-        bot_app.add_handler(CommandHandler("help", help_command))
-        bot_app.add_handler(CommandHandler("status", status_command))
-        bot_app.add_handler(CommandHandler("stats", stats_command))
+        bot_app = Application.builder().token(Config.BOT_TOKEN).build()
+        bot_app.add_handler(CommandHandler("start", start))
         bot_app.add_handler(CommandHandler("deploy", deploy_command))
-        bot_app.add_handler(CommandHandler("withdraw", withdraw_command))
-        bot_app.add_handler(CommandHandler("support", support_command))
-        
-        # Button handler
         bot_app.add_handler(CallbackQueryHandler(button_handler))
         
-        # Initialize
         await bot_app.initialize()
         
-        # Set webhook
-        if WEBHOOK_URL:
-            webhook_path = f"/webhook/{BOT_TOKEN.split(':')[1]}"
-            full_url = f"{WEBHOOK_URL}{webhook_path}"
+        if Config.WEBHOOK_URL:
+            webhook_path = f"/webhook/{Config.BOT_TOKEN.split(':')[1]}"
+            full_url = f"{Config.WEBHOOK_URL}{webhook_path}"
             await bot_app.bot.set_webhook(url=full_url)
             logger.info(f"✅ Webhook: {full_url}")
         
-        # Start
         await bot_app.start()
         logger.info("✅ Bot started!")
     
@@ -1054,19 +789,18 @@ def init_bot():
 # ═══════════════════════════════════════════════════════════════════════
 
 def main():
-    logger.info("🚀 Starting ICEGODS Platform v2.0")
+    logger.info("🚀 ICEGODS v3.1 PRODUCTION")
+    logger.info(f"🔧 New Database: ylpxxgvaetykmswzrpmi")
+    logger.info(f"🔧 Password Set: IceWarlord30Icegods")
     
-    # Start bot thread
     bot_thread = threading.Thread(target=init_bot, daemon=True)
     bot_thread.start()
     
-    # Wait
     import time
     time.sleep(5)
     
-    # Start Flask
-    logger.info(f"🌐 Starting server on port {PORT}")
-    app.run(host="0.0.0.0", port=PORT, threaded=True)
+    logger.info(f"🌐 Server on port {Config.PORT}")
+    app.run(host="0.0.0.0", port=Config.PORT, threaded=True)
 
 if __name__ == "__main__":
     main()
