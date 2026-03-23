@@ -1,0 +1,30 @@
+# 🦅 MEX WarSystem v7.2 - Sovereign SaaS Engine
+**High-Frequency Solana Ingestion & Automated Telegram Bot Platform**
+
+![Status](https://img.shields.io/badge/Status-Fully%20Operational-green)
+![Tech](https://img.shields.io/badge/Stack-Python%20|%20Supabase%20|%20Helius-blue)
+
+## ⚡ The Problem & The Weapon
+In the sub-100ms world of Solana, standard trackers are too slow. **MEX WarSystem** is a "Forward Deployed" infrastructure designed to detect, filter, and monetize on-chain activity before the "herd" arrives.
+
+### 🛡️ Core Architecture
+* **Ingestion:** Real-time Solana Mempool monitoring via Helius gRPC.
+* **Logic Engine:** "2040 Logic" filters for $30k+ Liquidity, Dev History, and Rug-Security.
+* **SaaS Layer:** Automated "Bot-in-a-Bot" deployment system for white-labeling.
+* **Monetization:** Integrated SOL payment verification & revenue sharing.
+
+
+
+## 📂 System Components
+* `main.py`: Asynchronous multi-threaded core (Flask + Telethon).
+* `database.py`: PostgreSQL/Supabase integration for global scaling.
+* `token_detector.py`: Low-latency transaction surveillance.
+* `payment_monitor.py`: On-chain verification of subscription fees.
+
+## 🚀 Deployment (Host-Ready)
+This system is optimized for **Render** or **Heroku** deployment using the included `Procfile` and `deploy.sh`. 
+
+```bash
+# Verify system health before shipping
+python3 verify_deployment.py
+
