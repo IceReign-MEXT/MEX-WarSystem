@@ -9,7 +9,7 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL","INFO"))
 log=logging.getLogger("mexwar")
 app=Flask(__name__)
 app.wsgi_app=ProxyFix(app.wsgi_app,x_for=1,x_proto=1)
-app.config.update(SECRET_KEY=os.getenv("SECRET_KEY","dev-only-change-this"),SQLALCHEMY_DATABASE_URI=os.getenv("DATABASE_URL","sqlite:///mexwar.db").replace("postgres://","postgresql://",1),SQLALCHEMY_TRACK_MODIFICATIONS=False,SESSION_COOKIE_HTTPONLY=True,SESSION_COOKIE_SAMESITE="Lax",SESSION_COOKIE_SECURE=os.getenv("COOKIE_SECURE","true").lower()=="true")
+app.config.update(SECRET_KEY=os.getenv("SECRET_KEY","dev-only-change-this"),SQLALCHEMY_DATABASE_URI=os.getenv("DATABASE_URL","sqlite:///mexwar.db").replace("postgres://","postgresql+psycopg://",1).replace("postgresql://","postgresql+psycopg://",1),SQLALCHEMY_TRACK_MODIFICATIONS=False,SESSION_COOKIE_HTTPONLY=True,SESSION_COOKIE_SAMESITE="Lax",SESSION_COOKIE_SECURE=os.getenv("COOKIE_SECURE","true").lower()=="true")
 db=SQLAlchemy(app)
 class Watch(db.Model):
  id=db.Column(db.Integer,primary_key=True); address=db.Column(db.String(120),nullable=False,index=True); chain=db.Column(db.String(12),nullable=False); label=db.Column(db.String(80),default="My wallet"); created_at=db.Column(db.DateTime,default=datetime.utcnow)
@@ -64,6 +64,7 @@ def checkout():
 def verify(ref):
  c=Customer.query.filter_by(paystack_reference=ref).first()
  if not c:return False
+ if c.status=="active":return True
  r=requests.get("https://api.paystack.co/transaction/verify/"+ref,headers={"Authorization":"Bearer "+os.getenv("PAYSTACK_SECRET_KEY","")},timeout=15);d=r.json().get("data") or {}
  if not r.ok or d.get("status")!="success" or d.get("amount")!=price(c.plan)*100 or (d.get("customer") or {}).get("email","").lower()!=c.email:return False
  c.status="active";now=datetime.utcnow();c.expires_at=max(c.expires_at or now,now)+timedelta(days=30);db.session.commit();return True
