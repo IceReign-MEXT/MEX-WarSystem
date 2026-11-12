@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: mex-war-system
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --workers 2 --threads 4 --timeout 90
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: SECRET_KEY
+        generateValue: true
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: DATABASE_URL
+        sync: false
+      - key: APP_BASE_URL
+        sync: false
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: PLAN_STARTER_NGN
+        value: "0"
+      - key: PLAN_PRO_NGN
+        value: "0"
+      - key: PLAN_TEAM_NGN
+        value: "0"
