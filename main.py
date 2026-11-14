@@ -63,11 +63,7 @@ class PersistentDB:
                 'stats': {'visits': 0, 'joins': 0},
                 'spots_remaining': 47,
                 'price_increase': (datetime.utcnow() + timedelta(hours=24)).isoformat(),
-                'success_stories': [
-                    {"name": "CryptoWhale", "profit": 45.5, "time": "2 hours ago"},
-                    {"name": "SolanaKing", "profit": 128.0, "time": "5 hours ago"},
-                    {"name": "DeFiQueen", "profit": 67.2, "time": "1 day ago"},
-                ]
+                'success_stories': []
             }
     
     def save(self):
@@ -78,11 +74,7 @@ class PersistentDB:
         defaults = {
             'spots_remaining': 47,
             'price_increase': (datetime.utcnow() + timedelta(hours=24)).isoformat(),
-            'success_stories': [
-                {"name": "CryptoWhale", "profit": 45.5, "time": "2 hours ago"},
-                {"name": "SolanaKing", "profit": 128.0, "time": "5 hours ago"},
-                {"name": "DeFiQueen", "profit": 67.2, "time": "1 day ago"},
-            ]
+            'success_stories': []
         }
         for key, val in defaults.items():
             if key not in self.data:
@@ -236,7 +228,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     price_inc = datetime.fromisoformat(db.data['price_increase'])
     hours_left = int((price_inc - datetime.utcnow()).total_seconds() / 3600)
     spots = db.data.get('spots_remaining', 47)
-    story = random.choice(db.data.get('success_stories', []))
+    # No fabricated testimonials or earnings claims are displayed.
     
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🚀 CLAIM SPOT NOW", callback_data="buy_monthly")],
@@ -246,25 +238,16 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ])
     
     await update.message.reply_text(
-        f"""🚀 ICEGODS BOT PLATFORM
+        """🚀 MEX-WARSYSTEM
 
-🔥 {story['name']} earned {story['profit']} SOL {story['time']}
-⚡ Only {spots} spots left!
-⏰ Price up in {max(0, hours_left)}h!
+A Solana-focused Telegram bot platform currently undergoing
+security and payment verification testing.
 
-💎 WHAT YOU GET:
-✅ White-label token alert bot
-✅ Auto-detect 100x gems
-✅ VIP/Whale/Premium tiers
-✅ Automatic SOL payments
-✅ Airdrop distribution
-✅ 80% revenue share
+Customer subscriptions and automated bot deployment are
+temporarily unavailable while these systems are being completed.
 
-💰 100 subs = 56 SOL/month (~$8,400)
-
-🎁 Refer 3 = FREE ACCESS
-
-👇 CLICK BELOW 👇""",
+No investment returns or token performance are guaranteed.
+Follow the official project channel for verified release updates.""",
         reply_markup=keyboard
     )
 
@@ -475,6 +458,12 @@ Example:
         )
         return
     
+    await update.message.reply_text(
+        "Customer bot deployment is temporarily disabled while secure token storage "
+        "and isolated bot hosting are implemented. Do not send a bot token yet."
+    )
+    return
+
     token = context.args[0]
     
     # Validate token format
