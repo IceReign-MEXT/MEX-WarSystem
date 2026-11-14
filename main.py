@@ -338,21 +338,14 @@ async def show_dashboard(update, context):
     )
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show help"""
-    await update.message.reply_text(
-        """📖 ICEGODS COMMANDS
-
-/start - Main dashboard
-/confirm TX_HASH - Verify payment
-/status - Check subscription
-/deploy TOKEN - Deploy white-label bot
-/stats - Platform statistics
-/referral - Your referral link
-/earnings - Revenue report
-/wallet ADDRESS - Set SOL wallet
-/support - Contact @MexRobert
-
-💎 Get started: /start"""
+    """Show only currently supported commands."""
+    await update.effective_message.reply_text(
+        "MEX-WarSystem commands\n\n"
+        "/start - Project status and account entry\n"
+        "/status - Check current access status\n"
+        "/support - Contact support\n\n"
+        "Checkout, wallet configuration, referral rewards and customer bot deployment "
+        "are not enabled yet. Never send a bot token or SOL while maintenance mode is active."
     )
 
 async def cmd_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -630,42 +623,11 @@ async def cmd_earnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def cmd_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Set wallet address"""
-    user = update.effective_user
-    
-    if not context.args:
-        await update.message.reply_text(
-            """💳 SET WALLET
-
-Usage: /wallet YOUR_SOL_ADDRESS
-
-Example:
-/wallet HxmywH2gW9ezQ2nBXwurpaWsZS6YvdmLF23R9WgMAM7p
-
-This is where you'll receive:
-• Subscription payments
-• Airdrop distributions
-• Referral rewards"""
-        )
-        return
-    
-    wallet = context.args[0].strip()
-    
-    if len(wallet) < 30:
-        await update.message.reply_text("❌ Invalid Solana address")
-        return
-    
-    admin = db.get_or_create_admin(user.id, user.username, user.first_name)
-    admin['wallet'] = wallet
-    db.save()
-    
-    await update.message.reply_text(
-        f"""✅ WALLET SAVED
-
-`{wallet[:20]}...`
-
-You'll receive payments here!""",
-        parse_mode='Markdown'
+    """Wallet configuration is unavailable until monitoring is implemented."""
+    await update.effective_message.reply_text(
+        "Wallet monitoring setup is not enabled yet. You may share public wallet "
+        "addresses only after the feature is officially released. Never share a "
+        "seed phrase or private key."
     )
 
 async def cmd_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
