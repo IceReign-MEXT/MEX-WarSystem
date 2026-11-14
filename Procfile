@@ -1,1 +1,1 @@
-web: python preflight.py
+web: python preflight.py && gunicorn --workers 1 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT main:app
