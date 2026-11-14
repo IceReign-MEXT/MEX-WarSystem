@@ -10,6 +10,7 @@ import os
 import sys
 import asyncio
 import threading
+from contextlib import contextmanager
 import logging
 import random
 import hmac
@@ -62,6 +63,15 @@ class PersistentDB:
             database_url = "postgresql://" + database_url[len("postgres://"):]
         return psycopg2.connect(database_url, connect_timeout=10)
 
+    @contextmanager
+    def _connection(self):
+        conn = self._connect()
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
+
     def _default_data(self):
         return {
             'admins': {},
@@ -75,7 +85,7 @@ class PersistentDB:
 
     def load(self):
         if self.database_url:
-            with self._connect() as conn:
+            with self._connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS mex_warsystem_state (
