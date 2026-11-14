@@ -12,6 +12,7 @@ import asyncio
 import threading
 import logging
 import random
+import hmac
 import json
 import aiohttp
 from datetime import datetime, timedelta
@@ -36,7 +37,8 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 MASTER_WALLET = os.getenv("MASTER_WALLET")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://mex-warsystem-8rzh.onrender.com")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "").rstrip("/")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
 PORT = int(os.getenv("PORT", "10000"))
 BOT_USERNAME = os.getenv("BOT_USERNAME", "ICEMEXWarSystem_Bot")
 HELIUS_KEY = os.getenv("HELIUS_API_KEY")
@@ -180,6 +182,7 @@ async def verify_payment(tx_hash, expected_amount):
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Main entry point"""
     user = update.effective_user
+    message = update.effective_message
     db.data['stats']['visits'] = db.data['stats'].get('visits', 0) + 1
     db.save()
     
@@ -202,7 +205,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # MASTER ADMIN
     if user.id == ADMIN_ID:
         stats = db.get_stats()
-        await update.message.reply_text(
+        await message.reply_text(
             f"""👑 MASTER CONTROL
 
 📊 METRICS:
@@ -714,6 +717,7 @@ Share to earn free days!""",
 app = Flask(__name__)
 application = None
 bot_loop = None
+bot_ready = False
 
 def process_update_sync(update_data):
     if not bot_loop or not bot_loop.is_running():
@@ -737,23 +741,30 @@ async def process_update_async(update_data):
         return False
 
 @app.route("/")
+@app.route("/health/ready")
 def health():
-    try:
-        stats = db.get_stats()
-        return jsonify({
-            "status": "maintenance",
-            "service_ready": False,
-            "checkout_enabled": False,
-            "customer_bot_deployment_enabled": False,
-            "time": datetime.utcnow().isoformat()
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    ready = bool(application and bot_loop and bot_loop.is_running() and bot_ready)
+    payload = {
+        "status": "ready" if ready else "starting",
+        "service_ready": ready,
+        "checkout_enabled": False,
+        "customer_bot_deployment_enabled": False,
+        "time": datetime.utcnow().isoformat()
+    }
+    return jsonify(payload), 200 if ready else 503
 
-@app.route(f"/webhook/{BOT_TOKEN.split(':')[1]}", methods=['POST'])
+@app.route("/health/live")
+def liveness():
+    return jsonify({"status": "alive"}), 200
+
+@app.route(f"/webhook/{WEBHOOK_SECRET}", methods=['POST'])
 def webhook():
-    if not application or bot_loop is None:
+    if not application or bot_loop is None or not bot_ready:
         return jsonify({"error": "Not ready"}), 503
+
+    supplied_secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+    if not hmac.compare_digest(supplied_secret, WEBHOOK_SECRET):
+        return jsonify({"error": "Unauthorized"}), 403
     
     try:
         data = request.get_json()
@@ -772,7 +783,7 @@ def webhook():
 # ═══════════════════════════════════════════════════════════════════════
 
 async def bot_main():
-    global application, bot_loop
+    global application, bot_loop, bot_ready
     bot_loop = asyncio.get_running_loop()
     
     application = Application.builder().token(BOT_TOKEN).build()
@@ -794,11 +805,12 @@ async def bot_main():
     
     webhook_path = f"/webhook/{BOT_TOKEN.split(':')[1]}"
     full_url = f"{WEBHOOK_URL}{webhook_path}"
-    await application.bot.set_webhook(url=full_url)
+    await application.bot.set_webhook(url=full_url, secret_token=WEBHOOK_SECRET, allowed_updates=Update.ALL_TYPES)
     logger.info(f"✅ Webhook: {full_url}")
     
     await application.start()
-    logger.info("✅ Bot started!")
+    bot_ready = True
+    logger.info("Telegram bot application started and webhook is configured.")
     
     while True:
         await asyncio.sleep(3600)
@@ -808,7 +820,7 @@ def run_bot():
 
 def main():
     logger.info("=" * 60)
-    logger.info("ICEGODS v7.2 - FULLY OPERATIONAL")
+    logger.info("MEX-WarSystem starting in restricted maintenance mode")
     logger.info("=" * 60)
     
     bot_thread = threading.Thread(target=run_bot, daemon=True)
