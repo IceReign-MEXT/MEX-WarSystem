@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: mex-warsystem
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python preflight.py
+    healthCheckPath: /health/ready
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_ID
+        sync: false
+      - key: MASTER_WALLET
+        sync: false
+      - key: WEBHOOK_URL
+        sync: false
+      - key: WEBHOOK_SECRET
+        sync: false
+      - key: PORT
+        value: "10000"
