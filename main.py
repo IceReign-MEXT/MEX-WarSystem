@@ -240,7 +240,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("💬 Channel", url="https://t.me/ICEGODSICEDEVIL")]
     ])
     
-    await update.message.reply_text(
+    await message.reply_text(
         """🚀 MEX-WARSYSTEM
 
 A Solana-focused Telegram bot platform currently undergoing
@@ -284,7 +284,7 @@ async def show_dashboard(update, context):
 
 🎯 Referral rewards are not yet enabled.
 
-🚀 Deploy bot to earn!""",
+🚀 Bot deployment is currently unavailable.""",
         reply_markup=keyboard,
         parse_mode='Markdown'
     )
@@ -422,7 +422,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🤖 Bots: {admin.get('bots_deployed', 0)}/10
 👥 Referrals: {admin.get('referrals', 0)}
 
-🚀 Use /deploy to create bots!"""
+🚀 Bot deployment is currently unavailable."""
         )
     else:
         await update.message.reply_text(
@@ -562,12 +562,7 @@ async def cmd_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
 `{link}`
 
 👥 Referrals: {refs}
-🎁 Free Days: {refs * 3}
-🎯 Next: {3 - (refs % 3)} more = +3 days!
-
-💰 VALUE: Each ref = 0.5 SOL
-
-Share everywhere!""",
+🎁 Referral rewards are not enabled yet. Referrals are counted for interest only.""",
         reply_markup=keyboard,
         parse_mode='Markdown'
     )
@@ -702,7 +697,7 @@ async def show_referral_button(query, user_id):
 🔗 Link: `{link}`
 👥 Referrals: {refs}
 
-Share to earn free days!""",
+Referral rewards are not enabled yet.""",
         parse_mode='Markdown',
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("📤 Share", url=f"https://t.me/share/url?url={link}&text=🔥 ICEGODS Bot Platform!")],
@@ -803,7 +798,7 @@ async def bot_main():
     
     await application.initialize()
     
-    webhook_path = f"/webhook/{BOT_TOKEN.split(':')[1]}"
+    webhook_path = f"/webhook/{WEBHOOK_SECRET}"
     full_url = f"{WEBHOOK_URL}{webhook_path}"
     await application.bot.set_webhook(url=full_url, secret_token=WEBHOOK_SECRET, allowed_updates=Update.ALL_TYPES)
     logger.info(f"✅ Webhook: {full_url}")
