@@ -306,6 +306,13 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Verify payment"""
+    await update.message.reply_text(
+        "⏸️ Payment activation is temporarily paused while on-chain "
+        "verification and replay protection are completed. Do not send funds "
+        "or submit a transaction for activation yet."
+    )
+    return
+
     user = update.effective_user
     
     if not context.args:
@@ -688,24 +695,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await cmd_start(update, context)
 
 async def show_payment(query, plan, amount):
-    """Show payment info"""
-    spots = db.data.get('spots_remaining', 47)
-    
+    """Keep checkout closed until payment verification is production-safe."""
     await query.message.edit_text(
-        f"""🧾 {plan.upper()} PLAN
-
-Amount: {amount} SOL
-Wallet: `{MASTER_WALLET}`
-
-Send SOL, then:
-/confirm TX_HASH
-
-⚡ Only {spots} spots!""",
-        parse_mode='Markdown',
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("❓ Help", url="https://t.me/MexRobert")]
-        ])
+        "⏸️ CHECKOUT TEMPORARILY UNAVAILABLE\n\n"
+        "We are completing transaction verification and duplicate-payment "
+        "protection. Please do not send SOL to any address for a subscription "
+        "until checkout is officially reopened.\n\n"
+        "No payment is being requested at this time."
     )
+
 
 async def show_referral_button(query, user_id):
     """Show referral from button"""
