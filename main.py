@@ -241,12 +241,16 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 referrer_id = source.replace("ref_", "")
                 if referrer_id in db.data['admins'] and referrer_id != str(user.id):
-                    db.data['admins'][referrer_id]['referrals'] = db.data['admins'][referrer_id].get('referrals', 0) + 1
-                    db.save()
-                    await context.bot.send_message(
-                        int(referrer_id),
-                        f"🎉 @{user.username or user.first_name} joined via your link!"
-                    )
+                    referrer = db.data['admins'][referrer_id]
+                    referred_users = referrer.setdefault('referred_users', [])
+                    if str(user.id) not in referred_users:
+                        referred_users.append(str(user.id))
+                        referrer['referrals'] = len(referred_users)
+                        db.save()
+                        await context.bot.send_message(
+                            int(referrer_id),
+                            f"🎉 @{user.username or user.first_name} joined via your link!"
+                        )
             except Exception as e:
                 logger.error(f"Referral error: {e}")
     
