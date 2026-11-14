@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import os
 import re
-import runpy
 import sys
 from urllib.parse import urlparse
 
@@ -65,8 +64,7 @@ def main() -> int:
             print(f"CONFIGURATION ERROR: {error}", file=sys.stderr)
         return 1
 
-    print("Configuration preflight passed; starting existing main.py.")
-    runpy.run_path("main.py", run_name="__main__")
+    print("Configuration preflight passed.")
     return 0
 
 
