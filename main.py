@@ -15,6 +15,8 @@ import random
 import hmac
 import json
 import aiohttp
+import psycopg2
+from psycopg2.extras import Json
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
@@ -49,26 +51,72 @@ HELIUS_KEY = os.getenv("HELIUS_API_KEY")
 
 class PersistentDB:
     def __init__(self):
+        self.database_url = os.getenv("DATABASE_URL", "").strip()
         self.file_path = "bot_data.json"
         self.data = self.load()
         self.ensure_defaults()
     
+    def _connect(self):
+        database_url = self.database_url
+        if database_url.startswith("postgres://"):
+            database_url = "postgresql://" + database_url[len("postgres://"):]
+        return psycopg2.connect(database_url, connect_timeout=10)
+
+    def _default_data(self):
+        return {
+            'admins': {},
+            'payments': [],
+            'bots': [],
+            'stats': {'visits': 0, 'joins': 0},
+            'spots_remaining': 47,
+            'price_increase': (datetime.utcnow() + timedelta(hours=24)).isoformat(),
+            'success_stories': []
+        }
+
     def load(self):
+        if self.database_url:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS mex_warsystem_state (
+                            id SMALLINT PRIMARY KEY CHECK (id = 1),
+                            data JSONB NOT NULL,
+                            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                        )
+                    """)
+                    cur.execute("SELECT data FROM mex_warsystem_state WHERE id = 1")
+                    row = cur.fetchone()
+                    if row:
+                        return row[0]
+                    initial = self._default_data()
+                    cur.execute(
+                        "INSERT INTO mex_warsystem_state (id, data) VALUES (1, %s)",
+                        (Json(initial),)
+                    )
+                    return initial
+
+        # Local development fallback only. Render deployment requires DATABASE_URL.
         try:
             with open(self.file_path, 'r') as f:
                 return json.load(f)
-        except:
-            return {
-                'admins': {}, 
-                'payments': [], 
-                'bots': [],
-                'stats': {'visits': 0, 'joins': 0},
-                'spots_remaining': 47,
-                'price_increase': (datetime.utcnow() + timedelta(hours=24)).isoformat(),
-                'success_stories': []
-            }
-    
+        except (OSError, json.JSONDecodeError):
+            return self._default_data()
+
     def save(self):
+        if self.database_url:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO mex_warsystem_state (id, data, updated_at)
+                        VALUES (1, %s, NOW())
+                        ON CONFLICT (id) DO UPDATE
+                        SET data = EXCLUDED.data, updated_at = NOW()
+                        """,
+                        (Json(self.data),)
+                    )
+            return
+
         with open(self.file_path, 'w') as f:
             json.dump(self.data, f, default=str)
     
