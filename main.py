@@ -762,11 +762,10 @@ def health():
     try:
         stats = db.get_stats()
         return jsonify({
-            "status": "ICEGODS v7.2 OPERATIONAL",
-            "users": stats['total'],
-            "active": stats['active'],
-            "revenue": stats['revenue'],
-            "spots": stats['spots_left'],
+            "status": "maintenance",
+            "service_ready": False,
+            "checkout_enabled": False,
+            "customer_bot_deployment_enabled": False,
             "time": datetime.utcnow().isoformat()
         })
     except Exception as e:
