@@ -7,8 +7,8 @@ VALID = {
     "BOT_TOKEN": "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi",
     "ADMIN_ID": "123456789",
     "MASTER_WALLET": "11111111111111111111111111111111",
-    "HELIUS_API_KEY": "test-key-not-a-real-secret",
     "WEBHOOK_URL": "https://example.onrender.com",
+    "WEBHOOK_SECRET": "test_secret_" + "x" * 40,
 }
 
 
@@ -36,6 +36,14 @@ class PreflightTests(unittest.TestCase):
     def test_invalid_wallet_is_rejected(self):
         env = {**VALID, "MASTER_WALLET": "not-a-wallet"}
         self.assertTrue(any("MASTER_WALLET" in item for item in validate_environment(env)))
+
+    def test_short_webhook_secret_is_rejected(self):
+        env = {**VALID, "WEBHOOK_SECRET": "short"}
+        self.assertTrue(any("WEBHOOK_SECRET" in item for item in validate_environment(env)))
+
+    def test_invalid_port_is_rejected(self):
+        env = {**VALID, "PORT": "70000"}
+        self.assertTrue(any("PORT" in item for item in validate_environment(env)))
 
 
 if __name__ == "__main__":
