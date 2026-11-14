@@ -9,6 +9,7 @@ VALID = {
     "MASTER_WALLET": "11111111111111111111111111111111",
     "WEBHOOK_URL": "https://example.onrender.com",
     "WEBHOOK_SECRET": "test_secret_" + "x" * 40,
+    "DATABASE_URL": "postgresql://user:pass@localhost:5432/mex",
 }
 
 
@@ -18,7 +19,7 @@ class PreflightTests(unittest.TestCase):
 
     def test_missing_values_are_reported_without_exposing_values(self):
         errors = validate_environment({})
-        self.assertEqual(len(errors), 5)
+        self.assertEqual(len(errors), 6)
         self.assertTrue(all("Missing required" in item for item in errors))
 
     def test_invalid_admin_id_is_rejected(self):
@@ -44,6 +45,10 @@ class PreflightTests(unittest.TestCase):
     def test_invalid_port_is_rejected(self):
         env = {**VALID, "PORT": "70000"}
         self.assertTrue(any("PORT" in item for item in validate_environment(env)))
+
+    def test_non_postgres_database_url_is_rejected(self):
+        env = {**VALID, "DATABASE_URL": "sqlite:///local.db"}
+        self.assertTrue(any("DATABASE_URL" in item for item in validate_environment(env)))
 
 
 if __name__ == "__main__":
