@@ -10,10 +10,14 @@ import os
 import sys
 import asyncio
 import threading
+from contextlib import contextmanager
 import logging
 import random
+import hmac
 import json
 import aiohttp
+import psycopg2
+from psycopg2.extras import Json
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
@@ -36,7 +40,8 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 MASTER_WALLET = os.getenv("MASTER_WALLET")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://mex-warsystem-8rzh.onrender.com")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "").rstrip("/")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
 PORT = int(os.getenv("PORT", "10000"))
 BOT_USERNAME = os.getenv("BOT_USERNAME", "ICEMEXWarSystem_Bot")
 HELIUS_KEY = os.getenv("HELIUS_API_KEY")
@@ -47,30 +52,81 @@ HELIUS_KEY = os.getenv("HELIUS_API_KEY")
 
 class PersistentDB:
     def __init__(self):
+        self.database_url = os.getenv("DATABASE_URL", "").strip()
         self.file_path = "bot_data.json"
         self.data = self.load()
         self.ensure_defaults()
     
+    def _connect(self):
+        database_url = self.database_url
+        if database_url.startswith("postgres://"):
+            database_url = "postgresql://" + database_url[len("postgres://"):]
+        return psycopg2.connect(database_url, connect_timeout=10)
+
+    @contextmanager
+    def _connection(self):
+        conn = self._connect()
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
+
+    def _default_data(self):
+        return {
+            'admins': {},
+            'payments': [],
+            'bots': [],
+            'stats': {'visits': 0, 'joins': 0},
+            'spots_remaining': 47,
+            'price_increase': (datetime.utcnow() + timedelta(hours=24)).isoformat(),
+            'success_stories': []
+        }
+
     def load(self):
+        if self.database_url:
+            with self._connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS mex_warsystem_state (
+                            id SMALLINT PRIMARY KEY CHECK (id = 1),
+                            data JSONB NOT NULL,
+                            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                        )
+                    """)
+                    cur.execute("SELECT data FROM mex_warsystem_state WHERE id = 1")
+                    row = cur.fetchone()
+                    if row:
+                        return row[0]
+                    initial = self._default_data()
+                    cur.execute(
+                        "INSERT INTO mex_warsystem_state (id, data) VALUES (1, %s)",
+                        (Json(initial),)
+                    )
+                    return initial
+
+        # Local development fallback only. Render deployment requires DATABASE_URL.
         try:
             with open(self.file_path, 'r') as f:
                 return json.load(f)
-        except:
-            return {
-                'admins': {}, 
-                'payments': [], 
-                'bots': [],
-                'stats': {'visits': 0, 'joins': 0},
-                'spots_remaining': 47,
-                'price_increase': (datetime.utcnow() + timedelta(hours=24)).isoformat(),
-                'success_stories': [
-                    {"name": "CryptoWhale", "profit": 45.5, "time": "2 hours ago"},
-                    {"name": "SolanaKing", "profit": 128.0, "time": "5 hours ago"},
-                    {"name": "DeFiQueen", "profit": 67.2, "time": "1 day ago"},
-                ]
-            }
-    
+        except (OSError, json.JSONDecodeError):
+            return self._default_data()
+
     def save(self):
+        if self.database_url:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO mex_warsystem_state (id, data, updated_at)
+                        VALUES (1, %s, NOW())
+                        ON CONFLICT (id) DO UPDATE
+                        SET data = EXCLUDED.data, updated_at = NOW()
+                        """,
+                        (Json(self.data),)
+                    )
+            return
+
         with open(self.file_path, 'w') as f:
             json.dump(self.data, f, default=str)
     
@@ -78,11 +134,7 @@ class PersistentDB:
         defaults = {
             'spots_remaining': 47,
             'price_increase': (datetime.utcnow() + timedelta(hours=24)).isoformat(),
-            'success_stories': [
-                {"name": "CryptoWhale", "profit": 45.5, "time": "2 hours ago"},
-                {"name": "SolanaKing", "profit": 128.0, "time": "5 hours ago"},
-                {"name": "DeFiQueen", "profit": 67.2, "time": "1 day ago"},
-            ]
+            'success_stories': []
         }
         for key, val in defaults.items():
             if key not in self.data:
@@ -188,6 +240,7 @@ async def verify_payment(tx_hash, expected_amount):
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Main entry point"""
     user = update.effective_user
+    message = update.effective_message
     db.data['stats']['visits'] = db.data['stats'].get('visits', 0) + 1
     db.save()
     
@@ -198,19 +251,23 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 referrer_id = source.replace("ref_", "")
                 if referrer_id in db.data['admins'] and referrer_id != str(user.id):
-                    db.data['admins'][referrer_id]['referrals'] = db.data['admins'][referrer_id].get('referrals', 0) + 1
-                    db.save()
-                    await context.bot.send_message(
-                        int(referrer_id),
-                        f"🎉 @{user.username or user.first_name} joined via your link!"
-                    )
+                    referrer = db.data['admins'][referrer_id]
+                    referred_users = referrer.setdefault('referred_users', [])
+                    if str(user.id) not in referred_users:
+                        referred_users.append(str(user.id))
+                        referrer['referrals'] = len(referred_users)
+                        db.save()
+                        await context.bot.send_message(
+                            int(referrer_id),
+                            f"🎉 @{user.username or user.first_name} joined via your link!"
+                        )
             except Exception as e:
                 logger.error(f"Referral error: {e}")
     
     # MASTER ADMIN
     if user.id == ADMIN_ID:
         stats = db.get_stats()
-        await update.message.reply_text(
+        await message.reply_text(
             f"""👑 MASTER CONTROL
 
 📊 METRICS:
@@ -236,7 +293,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     price_inc = datetime.fromisoformat(db.data['price_increase'])
     hours_left = int((price_inc - datetime.utcnow()).total_seconds() / 3600)
     spots = db.data.get('spots_remaining', 47)
-    story = random.choice(db.data.get('success_stories', []))
+    # No fabricated testimonials or earnings claims are displayed.
     
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🚀 CLAIM SPOT NOW", callback_data="buy_monthly")],
@@ -245,26 +302,17 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("💬 Channel", url="https://t.me/ICEGODSICEDEVIL")]
     ])
     
-    await update.message.reply_text(
-        f"""🚀 ICEGODS BOT PLATFORM
+    await message.reply_text(
+        """🚀 MEX-WARSYSTEM
 
-🔥 {story['name']} earned {story['profit']} SOL {story['time']}
-⚡ Only {spots} spots left!
-⏰ Price up in {max(0, hours_left)}h!
+A Solana-focused Telegram bot platform currently undergoing
+security and payment verification testing.
 
-💎 WHAT YOU GET:
-✅ White-label token alert bot
-✅ Auto-detect 100x gems
-✅ VIP/Whale/Premium tiers
-✅ Automatic SOL payments
-✅ Airdrop distribution
-✅ 80% revenue share
+Customer subscriptions and automated bot deployment are
+temporarily unavailable while these systems are being completed.
 
-💰 100 subs = 56 SOL/month (~$8,400)
-
-🎁 Refer 3 = FREE ACCESS
-
-👇 CLICK BELOW 👇""",
+No investment returns or token performance are guaranteed.
+Follow the official project channel for verified release updates.""",
         reply_markup=keyboard
     )
 
@@ -296,33 +344,33 @@ async def show_dashboard(update, context):
 🔗 YOUR LINK:
 `{link}`
 
-🎯 3 referrals = FREE!
+🎯 Referral rewards are not yet enabled.
 
-🚀 Deploy bot to earn!""",
+🚀 Bot deployment is currently unavailable.""",
         reply_markup=keyboard,
         parse_mode='Markdown'
     )
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show help"""
-    await update.message.reply_text(
-        """📖 ICEGODS COMMANDS
-
-/start - Main dashboard
-/confirm TX_HASH - Verify payment
-/status - Check subscription
-/deploy TOKEN - Deploy white-label bot
-/stats - Platform statistics
-/referral - Your referral link
-/earnings - Revenue report
-/wallet ADDRESS - Set SOL wallet
-/support - Contact @MexRobert
-
-💎 Get started: /start"""
+    """Show only currently supported commands."""
+    await update.effective_message.reply_text(
+        "MEX-WarSystem commands\n\n"
+        "/start - Project status and account entry\n"
+        "/status - Check current access status\n"
+        "/support - Contact support\n\n"
+        "Checkout, wallet configuration, referral rewards and customer bot deployment "
+        "are not enabled yet. Never send a bot token or SOL while maintenance mode is active."
     )
 
 async def cmd_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Verify payment"""
+    await update.message.reply_text(
+        "⏸️ Payment activation is temporarily paused while on-chain "
+        "verification and replay protection are completed. Do not send funds "
+        "or submit a transaction for activation yet."
+    )
+    return
+
     user = update.effective_user
     
     if not context.args:
@@ -429,17 +477,15 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🤖 Bots: {admin.get('bots_deployed', 0)}/10
 👥 Referrals: {admin.get('referrals', 0)}
 
-🚀 Use /deploy to create bots!"""
+🚀 Bot deployment is currently unavailable."""
         )
     else:
         await update.message.reply_text(
             """❌ NO ACTIVE SUBSCRIPTION
 
-💎 Subscribe to deploy bots:
-• Monthly: 5 SOL
-• Yearly: 50 SOL
+New subscriptions are temporarily paused while payment verification is completed. Please do not send SOL.
 
-👉 /start to subscribe"""
+"""
         )
 
 async def cmd_deploy(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -475,6 +521,12 @@ Example:
         )
         return
     
+    await update.message.reply_text(
+        "Customer bot deployment is temporarily disabled while secure token storage "
+        "and isolated bot hosting are implemented. Do not send a bot token yet."
+    )
+    return
+
     token = context.args[0]
     
     # Validate token format
@@ -565,12 +617,7 @@ async def cmd_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
 `{link}`
 
 👥 Referrals: {refs}
-🎁 Free Days: {refs * 3}
-🎯 Next: {3 - (refs % 3)} more = +3 days!
-
-💰 VALUE: Each ref = 0.5 SOL
-
-Share everywhere!""",
+🎁 Referral rewards are not enabled yet. Referrals are counted for interest only.""",
         reply_markup=keyboard,
         parse_mode='Markdown'
     )
@@ -584,67 +631,17 @@ async def cmd_earnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Start with /start")
         return
     
-    current = admin.get('earnings', 0)
-    potential = 56.0  # If 100 subs
-    
     await update.message.reply_text(
-        f"""💰 EARNINGS DASHBOARD
-
-Current: {current:.2f} SOL
-
-📈 POTENTIAL:
-100 subscribers = 56 SOL/month
-= ~${potential * 150:.0f}/month
-
-🎯 TO EARN:
-1. /deploy your bot
-2. Add to crypto groups
-3. Offer free trials
-4. Build community
-
-🚀 Start: /deploy""",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🚀 Deploy Now", callback_data="deploy")]
-        ])
+        "Earnings reporting is not available yet. It will be enabled after "
+        "verified customer payments and service revenue are recorded in the database."
     )
 
 async def cmd_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Set wallet address"""
-    user = update.effective_user
-    
-    if not context.args:
-        await update.message.reply_text(
-            """💳 SET WALLET
-
-Usage: /wallet YOUR_SOL_ADDRESS
-
-Example:
-/wallet HxmywH2gW9ezQ2nBXwurpaWsZS6YvdmLF23R9WgMAM7p
-
-This is where you'll receive:
-• Subscription payments
-• Airdrop distributions
-• Referral rewards"""
-        )
-        return
-    
-    wallet = context.args[0].strip()
-    
-    if len(wallet) < 30:
-        await update.message.reply_text("❌ Invalid Solana address")
-        return
-    
-    admin = db.get_or_create_admin(user.id, user.username, user.first_name)
-    admin['wallet'] = wallet
-    db.save()
-    
-    await update.message.reply_text(
-        f"""✅ WALLET SAVED
-
-`{wallet[:20]}...`
-
-You'll receive payments here!""",
-        parse_mode='Markdown'
+    """Wallet configuration is unavailable until monitoring is implemented."""
+    await update.effective_message.reply_text(
+        "Wallet monitoring setup is not enabled yet. You may share public wallet "
+        "addresses only after the feature is officially released. Never share a "
+        "seed phrase or private key."
     )
 
 async def cmd_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -681,7 +678,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_referral_button(query, user_id)
     elif query.data == "deploy":
         await query.message.edit_text(
-            "🚀 Use command:\n/deploy YOUR_BOT_TOKEN\n\nGet token from @BotFather",
+            "Customer bot deployment is temporarily unavailable. Do not send a bot token.",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("📖 Guide", url="https://t.me/ICEGODSICEDEVIL")]
             ])
@@ -699,24 +696,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await cmd_start(update, context)
 
 async def show_payment(query, plan, amount):
-    """Show payment info"""
-    spots = db.data.get('spots_remaining', 47)
-    
+    """Keep checkout closed until payment verification is production-safe."""
     await query.message.edit_text(
-        f"""🧾 {plan.upper()} PLAN
-
-Amount: {amount} SOL
-Wallet: `{MASTER_WALLET}`
-
-Send SOL, then:
-/confirm TX_HASH
-
-⚡ Only {spots} spots!""",
-        parse_mode='Markdown',
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("❓ Help", url="https://t.me/MexRobert")]
-        ])
+        "⏸️ CHECKOUT TEMPORARILY UNAVAILABLE\n\n"
+        "We are completing transaction verification and duplicate-payment "
+        "protection. Please do not send SOL to any address for a subscription "
+        "until checkout is officially reopened.\n\n"
+        "No payment is being requested at this time."
     )
+
 
 async def show_referral_button(query, user_id):
     """Show referral from button"""
@@ -733,7 +721,7 @@ async def show_referral_button(query, user_id):
 🔗 Link: `{link}`
 👥 Referrals: {refs}
 
-Share to earn free days!""",
+Referral rewards are not enabled yet.""",
         parse_mode='Markdown',
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("📤 Share", url=f"https://t.me/share/url?url={link}&text=🔥 ICEGODS Bot Platform!")],
@@ -748,6 +736,7 @@ Share to earn free days!""",
 app = Flask(__name__)
 application = None
 bot_loop = None
+bot_ready = False
 
 def process_update_sync(update_data):
     if not bot_loop or not bot_loop.is_running():
@@ -771,24 +760,30 @@ async def process_update_async(update_data):
         return False
 
 @app.route("/")
+@app.route("/health/ready")
 def health():
-    try:
-        stats = db.get_stats()
-        return jsonify({
-            "status": "ICEGODS v7.2 OPERATIONAL",
-            "users": stats['total'],
-            "active": stats['active'],
-            "revenue": stats['revenue'],
-            "spots": stats['spots_left'],
-            "time": datetime.utcnow().isoformat()
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    ready = bool(application and bot_loop and bot_loop.is_running() and bot_ready)
+    payload = {
+        "status": "ready" if ready else "starting",
+        "service_ready": ready,
+        "checkout_enabled": False,
+        "customer_bot_deployment_enabled": False,
+        "time": datetime.utcnow().isoformat()
+    }
+    return jsonify(payload), 200 if ready else 503
 
-@app.route(f"/webhook/{BOT_TOKEN.split(':')[1]}", methods=['POST'])
+@app.route("/health/live")
+def liveness():
+    return jsonify({"status": "alive"}), 200
+
+@app.route(f"/webhook/{WEBHOOK_SECRET}", methods=['POST'])
 def webhook():
-    if not application or bot_loop is None:
+    if not application or bot_loop is None or not bot_ready:
         return jsonify({"error": "Not ready"}), 503
+
+    supplied_secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+    if not hmac.compare_digest(supplied_secret, WEBHOOK_SECRET):
+        return jsonify({"error": "Unauthorized"}), 403
     
     try:
         data = request.get_json()
@@ -807,7 +802,7 @@ def webhook():
 # ═══════════════════════════════════════════════════════════════════════
 
 async def bot_main():
-    global application, bot_loop
+    global application, bot_loop, bot_ready
     bot_loop = asyncio.get_running_loop()
     
     application = Application.builder().token(BOT_TOKEN).build()
@@ -827,13 +822,14 @@ async def bot_main():
     
     await application.initialize()
     
-    webhook_path = f"/webhook/{BOT_TOKEN.split(':')[1]}"
+    webhook_path = f"/webhook/{WEBHOOK_SECRET}"
     full_url = f"{WEBHOOK_URL}{webhook_path}"
-    await application.bot.set_webhook(url=full_url)
+    await application.bot.set_webhook(url=full_url, secret_token=WEBHOOK_SECRET, allowed_updates=Update.ALL_TYPES)
     logger.info(f"✅ Webhook: {full_url}")
     
     await application.start()
-    logger.info("✅ Bot started!")
+    bot_ready = True
+    logger.info("Telegram bot application started and webhook is configured.")
     
     while True:
         await asyncio.sleep(3600)
@@ -841,19 +837,16 @@ async def bot_main():
 def run_bot():
     asyncio.run(bot_main())
 
-def main():
-    logger.info("=" * 60)
-    logger.info("ICEGODS v7.2 - FULLY OPERATIONAL")
-    logger.info("=" * 60)
-    
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
+def start_bot_thread():
+    """Start exactly one Telegram webhook consumer in this web process."""
+    logger.info("Starting MEX-WarSystem in restricted maintenance mode")
+    bot_thread = threading.Thread(target=run_bot, name="telegram-bot", daemon=True)
     bot_thread.start()
-    
-    import time
-    time.sleep(3)
-    
-    logger.info(f"🌐 Server on port {PORT}")
-    app.run(host="0.0.0.0", port=PORT, threaded=False)
+
+
+# Render runs one Gunicorn worker; start the bot runtime when that worker imports app.
+start_bot_thread()
 
 if __name__ == "__main__":
-    main()
+    # Local development only. Production uses Gunicorn via render.yaml.
+    app.run(host="0.0.0.0", port=PORT, threaded=True)
