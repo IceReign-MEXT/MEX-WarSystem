@@ -11,7 +11,7 @@ import runpy
 import sys
 from urllib.parse import urlparse
 
-REQUIRED = ("BOT_TOKEN", "ADMIN_ID", "MASTER_WALLET", "HELIUS_API_KEY", "WEBHOOK_URL")
+REQUIRED = ("BOT_TOKEN", "ADMIN_ID", "MASTER_WALLET", "WEBHOOK_URL", "WEBHOOK_SECRET")
 
 
 def validate_environment(environ: dict[str, str] | None = None) -> list[str]:
@@ -34,11 +34,22 @@ def validate_environment(environ: dict[str, str] | None = None) -> list[str]:
     if wallet and not re.fullmatch(r"[1-9A-HJ-NP-Za-km-z]{32,44}", wallet):
         errors.append("MASTER_WALLET does not look like a Solana public address.")
 
+    webhook_secret = env.get("WEBHOOK_SECRET", "").strip()
+    if webhook_secret and (len(webhook_secret) < 32 or not re.fullmatch(r"[A-Za-z0-9_-]+", webhook_secret)):
+        errors.append("WEBHOOK_SECRET must be 32-256 characters using letters, numbers, underscores or hyphens.")
+
     webhook_url = env.get("WEBHOOK_URL", "").strip()
     if webhook_url:
         parsed = urlparse(webhook_url)
         if parsed.scheme != "https" or not parsed.netloc or parsed.path not in ("", "/"):
             errors.append("WEBHOOK_URL must be an HTTPS origin, without a path.")
+
+    port = env.get("PORT", "10000").strip()
+    try:
+        if not 1 <= int(port) <= 65535:
+            raise ValueError
+    except ValueError:
+        errors.append("PORT must be an integer between 1 and 65535.")
 
     return errors
 
