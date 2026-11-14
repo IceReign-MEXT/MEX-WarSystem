@@ -34,7 +34,11 @@ def validate_environment(environ: dict[str, str] | None = None) -> list[str]:
     if wallet and not re.fullmatch(r"[1-9A-HJ-NP-Za-km-z]{32,44}", wallet):
         errors.append("MASTER_WALLET does not look like a Solana public address.")
 
-    database_url = env.get("DATABASE_URL", "").strip()\n    if database_url and not database_url.startswith(("postgres://", "postgresql://")):\n        errors.append("DATABASE_URL must be a PostgreSQL connection URL.")\n\n    webhook_secret = env.get("WEBHOOK_SECRET", "").strip()
+    database_url = env.get("DATABASE_URL", "").strip()
+    if database_url and not database_url.startswith(("postgres://", "postgresql://")):
+        errors.append("DATABASE_URL must be a PostgreSQL connection URL.")
+
+    webhook_secret = env.get("WEBHOOK_SECRET", "").strip()
     if webhook_secret and (len(webhook_secret) < 32 or len(webhook_secret) > 256 or not re.fullmatch(r"[A-Za-z0-9_-]+", webhook_secret)):
         errors.append("WEBHOOK_SECRET must be 32-256 characters using letters, numbers, underscores or hyphens.")
 
