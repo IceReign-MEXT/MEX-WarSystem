@@ -16,5 +16,7 @@ services:
         sync: false
       - key: WEBHOOK_SECRET
         sync: false
+      - key: DATABASE_URL
+        sync: false
       - key: PORT
         value: "10000"
