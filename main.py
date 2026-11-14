@@ -279,7 +279,7 @@ async def show_dashboard(update, context):
 🔗 YOUR LINK:
 `{link}`
 
-🎯 3 referrals = FREE!
+🎯 Referral rewards are not yet enabled.
 
 🚀 Deploy bot to earn!""",
         reply_markup=keyboard,
@@ -425,11 +425,9 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             """❌ NO ACTIVE SUBSCRIPTION
 
-💎 Subscribe to deploy bots:
-• Monthly: 5 SOL
-• Yearly: 50 SOL
+New subscriptions are temporarily paused while payment verification is completed. Please do not send SOL.
 
-👉 /start to subscribe"""
+"""
         )
 
 async def cmd_deploy(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -580,28 +578,9 @@ async def cmd_earnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Start with /start")
         return
     
-    current = admin.get('earnings', 0)
-    potential = 56.0  # If 100 subs
-    
     await update.message.reply_text(
-        f"""💰 EARNINGS DASHBOARD
-
-Current: {current:.2f} SOL
-
-📈 POTENTIAL:
-100 subscribers = 56 SOL/month
-= ~${potential * 150:.0f}/month
-
-🎯 TO EARN:
-1. /deploy your bot
-2. Add to crypto groups
-3. Offer free trials
-4. Build community
-
-🚀 Start: /deploy""",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🚀 Deploy Now", callback_data="deploy")]
-        ])
+        "Earnings reporting is not available yet. It will be enabled after "
+        "verified customer payments and service revenue are recorded in the database."
     )
 
 async def cmd_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -677,7 +656,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_referral_button(query, user_id)
     elif query.data == "deploy":
         await query.message.edit_text(
-            "🚀 Use command:\n/deploy YOUR_BOT_TOKEN\n\nGet token from @BotFather",
+            "Customer bot deployment is temporarily unavailable. Do not send a bot token.",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("📖 Guide", url="https://t.me/ICEGODSICEDEVIL")]
             ])
