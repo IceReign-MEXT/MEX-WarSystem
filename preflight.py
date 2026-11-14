@@ -11,7 +11,7 @@ import runpy
 import sys
 from urllib.parse import urlparse
 
-REQUIRED = ("BOT_TOKEN", "ADMIN_ID", "MASTER_WALLET", "WEBHOOK_URL", "WEBHOOK_SECRET")
+REQUIRED = ("BOT_TOKEN", "ADMIN_ID", "MASTER_WALLET", "WEBHOOK_URL", "WEBHOOK_SECRET", "DATABASE_URL")
 
 
 def validate_environment(environ: dict[str, str] | None = None) -> list[str]:
@@ -34,8 +34,8 @@ def validate_environment(environ: dict[str, str] | None = None) -> list[str]:
     if wallet and not re.fullmatch(r"[1-9A-HJ-NP-Za-km-z]{32,44}", wallet):
         errors.append("MASTER_WALLET does not look like a Solana public address.")
 
-    webhook_secret = env.get("WEBHOOK_SECRET", "").strip()
-    if webhook_secret and (len(webhook_secret) < 32 or not re.fullmatch(r"[A-Za-z0-9_-]+", webhook_secret)):
+    database_url = env.get("DATABASE_URL", "").strip()\n    if database_url and not database_url.startswith(("postgres://", "postgresql://")):\n        errors.append("DATABASE_URL must be a PostgreSQL connection URL.")\n\n    webhook_secret = env.get("WEBHOOK_SECRET", "").strip()
+    if webhook_secret and (len(webhook_secret) < 32 or len(webhook_secret) > 256 or not re.fullmatch(r"[A-Za-z0-9_-]+", webhook_secret)):
         errors.append("WEBHOOK_SECRET must be 32-256 characters using letters, numbers, underscores or hyphens.")
 
     webhook_url = env.get("WEBHOOK_URL", "").strip()
