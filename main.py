@@ -827,19 +827,16 @@ async def bot_main():
 def run_bot():
     asyncio.run(bot_main())
 
-def main():
-    logger.info("=" * 60)
-    logger.info("MEX-WarSystem starting in restricted maintenance mode")
-    logger.info("=" * 60)
-    
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
+def start_bot_thread():
+    """Start exactly one Telegram webhook consumer in this web process."""
+    logger.info("Starting MEX-WarSystem in restricted maintenance mode")
+    bot_thread = threading.Thread(target=run_bot, name="telegram-bot", daemon=True)
     bot_thread.start()
-    
-    import time
-    time.sleep(3)
-    
-    logger.info(f"🌐 Server on port {PORT}")
-    app.run(host="0.0.0.0", port=PORT, threaded=False)
+
+
+# Render runs one Gunicorn worker; start the bot runtime when that worker imports app.
+start_bot_thread()
 
 if __name__ == "__main__":
-    main()
+    # Local development only. Production uses Gunicorn via render.yaml.
+    app.run(host="0.0.0.0", port=PORT, threaded=True)
